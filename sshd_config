@@ -117,3 +117,14 @@ Subsystem	sftp	/usr/libexec/sftp-server
 #	AllowTcpForwarding no
 #	PermitTTY no
 #	ForceCommand cvs server
+
+# Log unauthorized user's failed password attempts via syslog
+#Audit no
+
+# Log to a database
+#AuditDB no
+#AuditServer localhost
+#AuditSchema sshAudit
+#AuditTable sshAuditPasswd
+#AuditUser change
+#AuditPasswd me

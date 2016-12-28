@@ -123,6 +123,10 @@
 #include "version.h"
 #include "ssherr.h"
 
+#ifdef AUDIT_PASSWD_DB
+#include <mysql/mysql.h>
+#endif
+
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
 #define REEXEC_STARTUP_PIPE_FD		(STDERR_FILENO + 2)
@@ -133,6 +137,11 @@ extern char *__progname;
 
 /* Server configuration options. */
 ServerOptions options;
+
+/*Connection to Mysql */
+#ifdef AUDIT_PASSWD_DB
+MYSQL* conn;
+#endif
 
 /* Name of the server configuration file. */
 char *config_file_name = _PATH_SERVER_CONFIG_FILE;
@@ -163,7 +172,11 @@ int saved_argc;
 
 /* re-exec */
 int rexeced_flag = 0;
+#ifdef AUDIT_PASSWD
+int rexec_flag = 0; //Turn off rexec
+#else
 int rexec_flag = 1;
+#endif
 int rexec_argc = 0;
 char **rexec_argv;
 
@@ -1011,6 +1024,65 @@ server_accept_inetd(int *sock_in, int *sock_out)
 	debug("inetd sockets after dupping: %d, %d", *sock_in, *sock_out);
 }
 
+#ifdef AUDIT_PASSWD_DB
+/*
+ * Open a dabase connection
+ * returns NULL on failure
+ */
+int
+audit_db_get_conn(MYSQL* conn)
+{
+	audit_options opts = options.audit_opts;
+	logit("Connecting to server:'%s' db:'%s' user:'%s' port:'%d'",
+	opts.server,
+	opts.schema,
+	opts.user,
+	opts.port);
+
+	conn =  mysql_real_connect (
+						conn,
+						opts.server,
+						opts.user,
+						opts.passwd,
+						opts.schema,
+						opts.port,
+						NULL,
+						0);
+
+	if (conn == NULL)
+		error("Error (%u) %s", mysql_errno(conn), mysql_error(conn));
+	 else
+		logit("Connection successful");
+
+	return conn != NULL;
+}
+
+/*
+ * Initialize the db driver
+ * Return NULL upon error
+ */
+int
+audit_db_init(void)
+{
+	logit("Initializing DB connection");
+	conn = mysql_init(NULL);
+	if (conn == NULL) {
+		fprintf(stderr,"\nFailed to initialize MySql (%s:%d)\n",__FILE__,__LINE__);
+		return 0;
+	}
+	my_bool my_true = 1;
+	mysql_options(conn, MYSQL_OPT_RECONNECT, &my_true);
+	if (!audit_db_get_conn(conn)) {
+		fprintf(stderr,"Error connecting to (server:db) %s:%s as user '%s' (%s:%d) \n",
+				options.audit_opts.server,
+				options.audit_opts.schema,
+				options.audit_opts.user,__FILE__,__LINE__);
+		return 0;
+	}
+	return 1;
+}
+#endif
+
 /*
  * Listen for TCP connections
  */
@@ -1108,6 +1180,11 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
 	startup_pipes = xcalloc(options.max_startups, sizeof(int));
 	for (i = 0; i < options.max_startups; i++)
 		startup_pipes[i] = -1;
+
+#ifdef AUDIT_PASSWD_DB
+	if (!test_flag && options.audit_opts.enable && options.audit_opts.enable_db && !audit_db_init())
+		cleanup_exit(2);
+#endif
 
 	/*
 	 * Stay listening for connections until the system crashes or
