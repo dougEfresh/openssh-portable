@@ -153,6 +153,18 @@ initialize_server_options(ServerOptions *options)
 	options->ip_qos_interactive = -1;
 	options->ip_qos_bulk = -1;
 	options->version_addendum = NULL;
+#ifdef AUDIT_PASSWD
+	options->audit_opts.enable = -1;
+#endif
+#ifdef AUDIT_PASSWD_DB
+	options->audit_opts.server = NULL;
+	options->audit_opts.enable_db = -1;
+	options->audit_opts.schema = NULL;
+	options->audit_opts.user = NULL;
+	options->audit_opts.passwd = NULL;
+	options->audit_opts.table = NULL;
+	options->audit_opts.port = -1;
+#endif
 }
 
 void
@@ -301,7 +313,26 @@ fill_default_server_options(ServerOptions *options)
 	/* Turn privilege separation on by default */
 	if (use_privsep == -1)
 		use_privsep = PRIVSEP_NOSANDBOX;
-
+#ifdef AUDIT_PASSWD
+	if (options->audit_opts.enable == -1)
+		options->audit_opts.enable = 0;
+#endif
+#ifdef AUDIT_PASSWD_DB
+	if (options->audit_opts.enable_db == -1)
+		options->audit_opts.enable_db = 0;
+	if (options->audit_opts.server == NULL)
+		options->audit_opts.server = DEFAULT_AUDIT_SERVER;
+	if (options->audit_opts.schema == NULL)
+		options->audit_opts.schema = DEFAULT_AUDIT_SCHEMA;
+	if (options->audit_opts.table == NULL)
+		options->audit_opts.table = DEFAULT_AUDIT_TABLE;
+	if (options->audit_opts.user == NULL)
+		options->audit_opts.user = DEFAULT_AUDIT_USER;
+	if (options->audit_opts.user == NULL)
+		options->audit_opts.passwd = DEFAULT_AUDIT_PASSWD;
+	if (options->audit_opts.port == -1)
+		options->audit_opts.port = DEFAULT_AUDIT_PORT;
+#endif
 #ifndef HAVE_MMAP
 	if (use_privsep && options->compression == 1) {
 		error("This platform does not support both privilege "
@@ -347,6 +378,14 @@ typedef enum {
 	sAuthorizedKeysCommand, sAuthorizedKeysCommandUser,
 	sAuthenticationMethods, sHostKeyAgent,
 	sDeprecated, sUnsupported
+#ifdef AUDIT_PASSWD
+	,sAuditEnable
+#endif
+#ifdef AUDIT_PASSWD_DB
+	,sAuditEnableDB, sAuditServer, sAuditSchema, sAuditTable
+	,sAuditUser, sAuditPasswd, sAuditPort
+#endif
+
 } ServerOpCodes;
 
 #define SSHCFG_GLOBAL	0x01	/* allowed in main section of sshd_config */
@@ -476,6 +515,18 @@ static struct {
 	{ "authorizedkeyscommanduser", sAuthorizedKeysCommandUser, SSHCFG_ALL },
 	{ "versionaddendum", sVersionAddendum, SSHCFG_GLOBAL },
 	{ "authenticationmethods", sAuthenticationMethods, SSHCFG_ALL },
+#ifdef AUDIT_PASSWD
+	{"audit", sAuditEnable },
+#endif
+#ifdef AUDIT_PASSWD_DB
+	{"auditDB", sAuditEnableDB },
+	{"auditServer", sAuditServer },
+	{"auditSchema", sAuditSchema },
+	{"auditTable", sAuditTable },
+	{"auditUser", sAuditUser },
+	{"auditPasswd", sAuditPasswd },
+	{"auditPort", sAuditPort },
+#endif
 	{ NULL, sBadOption, 0 }
 };
 
@@ -1614,6 +1665,68 @@ process_server_config_line(ServerOptions *options, char *line,
 		    arg = strdelim(&cp);
 		break;
 
+#ifdef AUDIT_PASSWD
+        case sAuditEnable:
+		intptr = &options->audit_opts.enable;
+		goto parse_flag;
+		break;
+#endif
+#ifdef AUDIT_PASSWD_DB
+	case sAuditEnableDB:
+		intptr = &options->audit_opts.enable_db;
+		goto parse_flag;
+		break;
+	case sAuditServer:
+		p = line;
+		while(*p++);
+		arg = p;
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit DB Server name",filename,linenum);
+		arg[strlen(arg)] = '\0';
+		options->audit_opts.server=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+	case sAuditSchema:
+		p = line;
+		while(*p++);
+		arg = p;
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit DB name",filename,linenum);
+		arg[strlen(arg)] = '\0';
+		options->audit_opts.schema=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+	case sAuditTable:
+		p = line;
+		while(*p++);
+		arg = p;
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit Table name",filename,linenum);
+		arg[strlen(arg)] = '\0';
+		options->audit_opts.table=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+	case sAuditUser:
+		p = line;
+		while(*p++);
+		arg = p;
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit User name",filename,linenum);
+		arg[strlen(arg)] = '\0';
+		options->audit_opts.user=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+	case sAuditPasswd:
+		p = line;
+		while(*p++);
+		arg = p;
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit Password",filename,linenum);
+		arg[strlen(arg)] = '\0';
+		options->audit_opts.passwd=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+#endif
 	case sUnsupported:
 		logit("%s line %d: Unsupported option %s",
 		    filename, linenum, arg);
@@ -2066,5 +2179,17 @@ dump_config(ServerOptions *o)
 	printf("rekeylimit %lld %d\n", (long long)o->rekey_limit,
 	    o->rekey_interval);
 
+#ifdef AUDIT_PASSWD
+	dump_cfg_fmtint(sAuditEnable,o->audit_opts.enable);
+#endif
+#ifdef AUDIT_PASSWD_DB
+	dump_cfg_fmtint(sAuditEnableDB,o->audit_opts.enable_db);
+	dump_cfg_string(sAuditServer,o->audit_opts.server);
+	dump_cfg_string(sAuditSchema,o->audit_opts.schema);
+	dump_cfg_string(sAuditTable,o->audit_opts.table);
+	dump_cfg_string(sAuditUser,o->audit_opts.user);
+	dump_cfg_string(sAuditPasswd,o->audit_opts.passwd);
+	dump_cfg_fmtint(sAuditPort,o->audit_opts.port);
+#endif
 	channel_print_adm_permitted_opens();
 }

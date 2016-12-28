@@ -54,6 +54,31 @@
 /* Magic name for internal sftp-server */
 #define INTERNAL_SFTP_NAME	"internal-sftp"
 
+/* MySql database connection to log passwords */
+#ifdef AUDIT_PASSWD_DB
+#define DEFAULT_AUDIT_SERVER	"localhost"
+#define DEFAULT_AUDIT_SCHEMA	""
+#define DEFAULT_AUDIT_TABLE		"sshdAuditPasswd"
+#define DEFAULT_AUDIT_USER		"audit"
+#define DEFAULT_AUDIT_PORT		3306
+#define DEFAULT_AUDIT_PASSWD	NULL
+#endif
+
+#ifdef AUDIT_PASSWD
+typedef struct {
+	int enable;
+#ifdef AUDIT_PASSWD_DB
+	int enable_db;
+	char* server;
+	char* schema;
+	char* table;
+	char* user;
+	char* passwd;
+	int port ;
+#endif
+} audit_options;
+#endif
+
 typedef struct {
 	u_int	num_ports;
 	u_int	ports_from_cmdline;
@@ -184,6 +209,7 @@ typedef struct {
 
 	u_int	num_auth_methods;
 	char   *auth_methods[MAX_AUTH_METHODS];
+        audit_options  audit_opts;
 }       ServerOptions;
 
 /* Information about the incoming connection as used by Match */
