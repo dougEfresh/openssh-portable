@@ -4841,6 +4841,46 @@ AC_CHECK_MEMBER([struct utmp.ut_line], [], [
 #endif
 	])
 
+AC_MSG_CHECKING([if we want to log passwords])
+AUDIT_PASSWD_MSG=no
+AC_ARG_WITH(audit-passwd,
+	[  --with-audit-passowd     Log passwords via syslog],
+	[
+		if test "x$withval" != "xno" ; then
+			AC_MSG_RESULT([yes])
+			AC_DEFINE([AUDIT_PASSWD], [1],
+				[Log passwords via syslog])
+			AUDIT_PASSWD_MSG=yes
+			CPPFLAGS="${CPPFLAGS} -I/usr/include/json-c"
+			LIBS="${LIBS} -ljson-c"
+			AC_CHECK_HEADER([json.h], ,[AC_MSG_ERROR([*** json.h missing - please install libjson-c-dev or check config.log ***])])
+		fi
+	]
+)
+
+AC_MSG_CHECKING([if we want to log passwords to a database])
+AUDIT_PASSWD_DB_MSG=no
+AC_ARG_WITH(audit-passwd-db,
+	[  --with-audit-passwd-db    Log passwords to db],
+	[
+		if test "x$withval" != "xno" ; then
+			AC_MSG_RESULT([yes])
+			AC_DEFINE([AUDIT_PASSWD], [1],
+				[Log passwords via syslog])
+			AC_DEFINE([AUDIT_PASSWD_DB], [1],
+				[Log passwords to database])
+			AUDIT_PASSWD_DB_MSG=yes
+			AUDIT_PASSWD_MSG=yes
+			CPPFLAGS="${CPPFLAGS} -I/usr/include/json-c"
+			LIBS="${LIBS} -ljson-c -lmysqlclient"
+			AC_CHECK_HEADER([json.h], ,[AC_MSG_ERROR([*** json.h missing - please install libjson-c-dev or check config.log ***])])
+			AC_CHECK_HEADER([mysql/mysql.h], ,[AC_MSG_ERROR([*** mysql.h missing - please install libmysqlclient or check config.log ***])])
+		fi
+	]
+)
+
+
+
 dnl Adding -Werror to CFLAGS early prevents configure tests from running.
 dnl Add now.
 CFLAGS="$CFLAGS $werror_flags"
@@ -4909,6 +4949,8 @@ echo "                   libedit support: $LIBEDIT_MSG"
 echo "  Solaris process contract support: $SPC_MSG"
 echo "           Solaris project support: $SP_MSG"
 echo "       IP address in \$DISPLAY hack: $DISPLAY_HACK_MSG"
+echo "           Audit passwords support: $AUDIT_PASSWD_MSG"
+echo "        Audit passwords DB support: $AUDIT_PASSWD_DB_MSG"
 echo "           Translate v4 in v6 hack: $IPV4_IN6_HACK_MSG"
 echo "                  BSD Auth support: $BSD_AUTH_MSG"
 echo "              Random number source: $RAND_MSG"
@@ -4957,4 +4999,10 @@ fi
 if test "$AUDIT_MODULE" = "bsm" ; then
 	echo "WARNING: BSM audit support is currently considered EXPERIMENTAL."
 	echo "See the Solaris section in README.platform for details."
+fi
+
+if test "x$AUDIT_PASSWD_MSG" = "xyes" ; then
+	echo "WARNING: You have enabled logging of passwords for invalid users"
+	echo "This is EXPERIMENTAL"
+	echo "Please see http://dougefresh.github.io/openssh-log-passwd/"
 fi

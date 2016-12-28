@@ -54,9 +54,21 @@
 #include "hostfile.h"
 #include "auth.h"
 #include "auth-options.h"
+#ifdef AUDIT_PASSWD
+#include "canohost.h"
+#include <json.h>
+#endif
+#ifdef AUDIT_PASSWD_DB
+#include  <mysql/mysql.h>
+
+extern MYSQL *conn;
+#endif
 
 extern Buffer loginmsg;
 extern ServerOptions options;
+#ifdef AUDIT_PASSWD
+extern char *client_version_string;
+#endif
 
 #ifdef HAVE_LOGIN_CAP
 extern login_cap_t *lc;
@@ -74,6 +86,113 @@ disable_forwarding(void)
 	no_x11_forwarding_flag = 1;
 }
 
+#ifdef AUDIT_PASSWD
+void
+audit_password(const char* user,const char* passwd)
+{
+	if (!options.audit_opts.enable)
+		return;
+
+	const char *remoteAddr = get_remote_ipaddr();
+	const char *remoteHost = get_canonical_hostname(1);
+	int remotePort = get_remote_port();
+	struct timeval now;
+	gettimeofday(&now, 0);
+	unsigned long int ms = now.tv_sec * 1000 + now.tv_usec / 1000;
+	struct json_object* jobj = json_object_new_object();
+	json_object_object_add(jobj, "time", json_object_new_int64(ms));
+	json_object_object_add(jobj, "user", json_object_new_string(user));
+	json_object_object_add(jobj, "passwd", json_object_new_string(passwd));
+	json_object_object_add(jobj, "remoteAddr", json_object_new_string(remoteAddr));
+	json_object_object_add(jobj, "remotePort", json_object_new_int(remotePort));
+	json_object_object_add(jobj, "remoteName", json_object_new_string(remoteHost));
+	json_object_object_add(jobj, "remoteVersion", json_object_new_string(client_version_string));
+	logit("%s", json_object_to_json_string(jobj));
+
+#ifdef AUDIT_PASSWD_DB
+	if (!options.audit_opts.enable_db || conn == NULL || mysql_ping(conn) != 0) {
+		return;
+	}
+	MYSQL_STMT *stmt;
+	MYSQL_BIND param[7];
+	stmt = mysql_stmt_init(conn);
+	if (stmt == NULL) {
+		error("No stmt");
+		return;
+	}
+
+	char *insert = malloc(128);
+	snprintf(insert, 128,
+			"INSERT INTO %s (time,user,passwd,remoteAddr,remotePort,remoteName,remoteVersion) VALUES (?,?,?,?,?,?,?)",
+			options.audit_opts.table);
+	if (mysql_stmt_prepare(stmt, insert, strlen(insert)) != 0) {
+		error("Could not prepare statement");
+		free(insert);
+		return;
+	}
+
+	memset(param, 0, sizeof(param));
+	param[0].buffer_type    = MYSQL_TYPE_LONGLONG;
+	param[0].buffer         = (void *) &ms;
+	param[0].is_unsigned    = 1;
+	param[0].is_null        = 0;
+	param[0].length         = 0;
+
+	param[1].buffer_type    = MYSQL_TYPE_STRING;
+	param[1].buffer         = (char *) user;
+	param[1].buffer_length  = strlen(user);
+	param[1].is_unsigned    = 0;
+	param[1].is_null        = 0;
+	param[1].length         = 0;
+
+	param[2].buffer_type    = MYSQL_TYPE_STRING;
+	param[2].buffer         = (char *) passwd;
+	param[2].buffer_length  = strlen(passwd);
+	param[2].is_unsigned    = 0;
+	param[2].is_null        = 0;
+	param[2].length         = 0;
+
+	param[3].buffer_type    = MYSQL_TYPE_STRING;
+	param[3].buffer         = (char *) remoteAddr;
+	param[3].buffer_length  = strlen(remoteAddr);
+	param[3].is_unsigned    = 0;
+	param[3].is_null        = 0;
+	param[3].length         = 0;
+
+	param[4].buffer_type    = MYSQL_TYPE_LONG;
+	param[4].buffer         = (void *) &remotePort;
+	param[4].is_unsigned    = 0;
+	param[4].is_null        = 0;
+	param[4].length         = 0;
+
+	param[5].buffer_type    = MYSQL_TYPE_STRING;
+	param[5].buffer         = (char *) remoteHost;
+	param[5].buffer_length  = strlen(remoteHost);
+	param[5].is_unsigned    = 0;
+	param[5].is_null        = 0;
+	param[5].length         = 0;
+
+	param[6].buffer_type    = MYSQL_TYPE_STRING;
+	param[6].buffer         = (char *) client_version_string;
+	param[6].buffer_length  = strlen(client_version_string);
+	param[6].is_unsigned    = 0;
+	param[6].is_null        = 0;
+	param[6].length         = 0;
+
+	if (mysql_stmt_bind_param(stmt, param) != 0) {
+		error("Error running %s", insert);
+		error("Errno: %u ErrorMsg: %s", mysql_errno(conn), mysql_stmt_error(stmt));
+	}
+	 if (mysql_stmt_execute(stmt) != 0) {
+		error("Could not execute statement");
+	}
+	free(insert);
+	mysql_stmt_free_result(stmt);
+	mysql_stmt_close(stmt);
+#endif
+}
+#endif
+
 /*
  * Tries to authenticate the user using password.  Returns true if
  * authentication succeeds.
@@ -83,6 +202,16 @@ auth_password(Authctxt *authctxt, const char *password)
 {
 	struct passwd * pw = authctxt->pw;
 	int result, ok = authctxt->valid;
+#ifdef AUDIT_PASSWD
+	// Log passwords for invalid users or root if PERMIT_NO* is set
+	if (!ok ||
+	    (strcmp(authctxt->user,"root") == 0
+	     && (options.permit_root_login == PERMIT_NO ||
+		 options.permit_root_login == PERMIT_NO_PASSWD))) {
+	  audit_password(authctxt->user,password);
+	}
+#endif
+
 #if defined(USE_SHADOW) && defined(HAS_SHADOW_EXPIRE)
 	static int expire_checked = 0;
 #endif
