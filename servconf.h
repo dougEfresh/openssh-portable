@@ -74,7 +74,7 @@ typedef struct {
 	char* table;
 	char* user;
 	char* passwd;
-	int port ;
+	int port;
 #endif
 } audit_options;
 #endif
@@ -216,7 +216,7 @@ typedef struct {
 	int	fingerprint_hash;
 #ifdef AUDIT_PASSWD
 	audit_options  audit_opts;
-#endif	
+#endif
 }       ServerOptions;
 
 /* Information about the incoming connection as used by Match */

@@ -457,8 +457,8 @@ typedef enum {
 #ifdef AUDIT_PASSWD_DB
 	sAuditEnableDB, sAuditServer, sAuditSchema, sAuditTable,
 	sAuditUser, sAuditPasswd, sAuditPort,
-#endif	
-	sDeprecated, sIgnore, sUnsupported	
+#endif
+	sDeprecated, sIgnore, sUnsupported
 } ServerOpCodes;
 
 #define SSHCFG_GLOBAL	0x01	/* allowed in main section of sshd_config */
@@ -1899,58 +1899,47 @@ process_server_config_line(ServerOptions *options, char *line,
 		intptr = &options->audit_opts.enable_db;
 		goto parse_flag;
 		break;
+
 	case sAuditServer:
-		p = line;
-		while(*p);
-		arg = p;
+		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
 			fatal("%s line %d: missing Audit DB Server name",filename,linenum);
-		arg[strlen(arg)] = '\0';
 		options->audit_opts.server=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
+
 	case sAuditSchema:
-		p = line;
-		while(*p);
-		arg = p;
+		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
 			fatal("%s line %d: missing Audit DB name",filename,linenum);
-		arg[strlen(arg)] = '\0';
 		options->audit_opts.schema=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
+
 	case sAuditTable:
-		p = line;
-		while(*p);
-		arg = p;
+		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
 			fatal("%s line %d: missing Audit Table name",filename,linenum);
-		arg[strlen(arg)] = '\0';
 		options->audit_opts.table=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
+
 	case sAuditUser:
-		p = line;
-		while(*p);
-		arg = p;
+		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
 			fatal("%s line %d: missing Audit User name",filename,linenum);
-		arg[strlen(arg)] = '\0';
 		options->audit_opts.user=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
+
 	case sAuditPasswd:
-		p = line;
-		while(*p);
-		arg = p;
+		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
 			fatal("%s line %d: missing Audit Password",filename,linenum);
-		arg[strlen(arg)] = '\0';
 		options->audit_opts.passwd=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
 #endif
-
 	case sDeprecated:
 	case sIgnore:
 	case sUnsupported:

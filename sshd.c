@@ -1064,19 +1064,21 @@ audit_db_get_conn(MYSQL* conn)
 int
 audit_db_init(void)
 {
-	logit("Initializing DB connection");
+	debug("Initializing DB connection");
 	conn = mysql_init(NULL);
 	if (conn == NULL) {
-		fprintf(stderr,"\nFailed to initialize MySql (%s:%d)\n",__FILE__,__LINE__);
+		error("\nFailed to initialize MySql (%s:%d)\n",__FILE__,__LINE__);
 		return 0;
 	}
 	my_bool my_true = 1;
 	mysql_options(conn, MYSQL_OPT_RECONNECT, &my_true);
 	if (!audit_db_get_conn(conn)) {
-		fprintf(stderr,"Error connecting to (server:db) %s:%s as user '%s' (%s:%d) \n",
+		error("Error connecting to (server:db) %s:%s as user '%s' (%s:%d) \n",
 				options.audit_opts.server,
 				options.audit_opts.schema,
-				options.audit_opts.user,__FILE__,__LINE__);
+				options.audit_opts.user,
+				__FILE__,
+				__LINE__);
 		return 0;
 	}
 	return 1;
