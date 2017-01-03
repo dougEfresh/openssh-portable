@@ -1939,6 +1939,14 @@ process_server_config_line(ServerOptions *options, char *line,
 		options->audit_opts.passwd=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
+
+	case sAuditPort:
+		arg = strdelim(&cp);
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit Password",filename,linenum);
+
+		options->audit_opts.port = a2port(arg);
+		break;
 #endif
 	case sDeprecated:
 	case sIgnore:
