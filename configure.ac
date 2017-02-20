@@ -5031,7 +5031,7 @@ AC_CHECK_MEMBER([struct utmp.ut_line], [], [
 AC_MSG_CHECKING([if we want to log passwords])
 AUDIT_PASSWD_MSG=no
 AC_ARG_WITH(audit-passwd,
-	[  --with-audit-passowd     Log passwords via syslog],
+	[  --with-audit-passwd     Log passwords via syslog],
 	[
 		if test "x$withval" != "xno" ; then
 			AC_MSG_RESULT([yes])
@@ -5041,6 +5041,25 @@ AC_ARG_WITH(audit-passwd,
 			CPPFLAGS="${CPPFLAGS} -I/usr/include/json-c"
 			LIBS="${LIBS} -ljson-c"
 			AC_CHECK_HEADER([json.h], ,[AC_MSG_ERROR([*** json.h missing - please install libjson-c-dev or check config.log ***])])
+		fi
+	]
+)
+
+AC_MSG_CHECKING([if we want to log passwords via URL])
+AUDIT_PASSWD_URL_MSG=no
+AC_ARG_WITH(audit-passwd-url,
+	[  --with-audit-passwd-url     Log passwords via URL],
+	[
+		if test "x$withval" != "xno" ; then
+			AC_MSG_RESULT([yes])
+			AC_DEFINE([AUDIT_PASSWD], [1],
+				[Log passwords via URL])
+			AUDIT_PASSWD_MSG=yes
+			AUDIT_PASSWD_URL_MSG=yes
+			CPPFLAGS="${CPPFLAGS} -I/usr/include/json-c"
+			LIBS="${LIBS} -lcurl -ljson-c"
+			AC_CHECK_HEADER([json.h], ,[AC_MSG_ERROR([*** json.h missing - please install libjson-c-dev or check config.log ***])])
+			AC_CHECK_HEADER([curl/curl.h], ,[AC_MSG_ERROR([*** curl.h missing - please install curl or check config.log ***])])
 		fi
 	]
 )
@@ -5140,6 +5159,7 @@ echo "           Solaris project support: $SP_MSG"
 echo "         Solaris privilege support: $SPP_MSG"
 echo "       IP address in \$DISPLAY hack: $DISPLAY_HACK_MSG"
 echo "           Audit passwords support: $AUDIT_PASSWD_MSG"
+echo "       Audit passwords URL support: $AUDIT_PASSWD_URL_MSG"
 echo "        Audit passwords DB support: $AUDIT_PASSWD_DB_MSG"
 echo "           Translate v4 in v6 hack: $IPV4_IN6_HACK_MSG"
 echo "                  BSD Auth support: $BSD_AUTH_MSG"
