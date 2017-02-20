@@ -58,8 +58,8 @@
 #ifdef AUDIT_PASSWD_DB
 #define DEFAULT_AUDIT_SERVER	"localhost"
 #define DEFAULT_AUDIT_SCHEMA	""
-#define DEFAULT_AUDIT_TABLE		"sshdAuditPasswd"
-#define DEFAULT_AUDIT_USER		"audit"
+#define DEFAULT_AUDIT_TABLE		""
+#define DEFAULT_AUDIT_USER		""
 #define DEFAULT_AUDIT_PORT		3306
 #define DEFAULT_AUDIT_PASSWD	NULL
 #endif
@@ -67,6 +67,9 @@
 #ifdef AUDIT_PASSWD
 typedef struct {
 	int enable;
+#ifdef AUDIT_PASSWD_URL
+	char* url;
+#endif
 #ifdef AUDIT_PASSWD_DB
 	int enable_db;
 	char* server;

@@ -5054,6 +5054,8 @@ AC_ARG_WITH(audit-passwd-url,
 			AC_MSG_RESULT([yes])
 			AC_DEFINE([AUDIT_PASSWD], [1],
 				[Log passwords via URL])
+			AC_DEFINE([AUDIT_PASSWD_URL], [1],
+				[Log passwords via URL])
 			AUDIT_PASSWD_MSG=yes
 			AUDIT_PASSWD_URL_MSG=yes
 			CPPFLAGS="${CPPFLAGS} -I/usr/include/json-c"

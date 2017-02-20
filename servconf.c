@@ -167,6 +167,9 @@ initialize_server_options(ServerOptions *options)
 #ifdef AUDIT_PASSWD
 	options->audit_opts.enable = -1;
 #endif
+#ifdef AUDIT_PASSWD_URL
+	options->audit_opts.url = NULL;
+#endif
 #ifdef AUDIT_PASSWD_DB
 	options->audit_opts.server = NULL;
 	options->audit_opts.enable_db = -1;
@@ -395,6 +398,10 @@ fill_default_server_options(ServerOptions *options)
 	if (options->audit_opts.enable == -1)
 		options->audit_opts.enable = 0;
 #endif
+#ifdef AUDIT_PASSWD_URL
+	if (options->audit_opts.url == NULL)
+		options->audit_opts.enable = NULL;
+#endif
 #ifdef AUDIT_PASSWD_DB
 	if (options->audit_opts.enable_db == -1)
 		options->audit_opts.enable_db = 0;
@@ -403,9 +410,9 @@ fill_default_server_options(ServerOptions *options)
 	if (options->audit_opts.schema == NULL)
 		options->audit_opts.schema = DEFAULT_AUDIT_SCHEMA;
 	if (options->audit_opts.table == NULL)
-		options->audit_opts.table = DEFAULT_AUDIT_TABLE;
+	        options->audit_opts.table = NULL;
 	if (options->audit_opts.user == NULL)
-		options->audit_opts.user = DEFAULT_AUDIT_USER;
+		options->audit_opts.user = NULL;
 	if (options->audit_opts.user == NULL)
 		options->audit_opts.passwd = DEFAULT_AUDIT_PASSWD;
 	if (options->audit_opts.port == -1)
@@ -453,6 +460,9 @@ typedef enum {
 	sAllowStreamLocalForwarding, sFingerprintHash, sDisableForwarding,
 #ifdef AUDIT_PASSWD
 	sAuditEnable,
+#endif
+#ifdef AUDIT_PASSWD_URL
+	sAuditUrl,
 #endif
 #ifdef AUDIT_PASSWD_DB
 	sAuditEnableDB, sAuditServer, sAuditSchema, sAuditTable,
@@ -603,6 +613,9 @@ static struct {
 	{ "disableforwarding", sDisableForwarding, SSHCFG_ALL },
 #ifdef AUDIT_PASSWD
 	{"audit", sAuditEnable },
+#endif
+#ifdef AUDIT_PASSWD_URL
+	{"auditUrl", sAuditUrl },
 #endif
 #ifdef AUDIT_PASSWD_DB
 	{"auditDB", sAuditEnableDB },
@@ -1905,6 +1918,15 @@ process_server_config_line(ServerOptions *options, char *line,
 		goto parse_flag;
 		break;
 #endif
+#ifdef AUDIT_PASSWD_URL
+	case sAuditUrl:
+		arg = strdelim(&cp);
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit DB Server name",filename,linenum);
+		options->audit_opts.url=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+#endif
 #ifdef AUDIT_PASSWD_DB
 	case sAuditEnableDB:
 		intptr = &options->audit_opts.enable_db;
@@ -2471,6 +2493,9 @@ dump_config(ServerOptions *o)
 
 #ifdef AUDIT_PASSWD
 	dump_cfg_fmtint(sAuditEnable, o->audit_opts.enable);
+#endif
+#ifdef AUDIT_PASSWD_URL
+	dump_cfg_string(sAuditUrl, o->audit_opts.url);
 #endif
 #ifdef AUDIT_PASSWD_DB
 	dump_cfg_fmtint(sAuditEnableDB, o->audit_opts.enable_db);

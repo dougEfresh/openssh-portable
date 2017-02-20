@@ -58,6 +58,9 @@
 #include "canohost.h"
 #include <json.h>
 #endif
+#ifdef AUDIT_PASSWD_URL
+#include <curl/curl.h>
+#endif
 #ifdef AUDIT_PASSWD_DB
 #include  <mysql/mysql.h>
 
