@@ -90,34 +90,38 @@ disable_forwarding(void)
 	no_agent_forwarding_flag = 1;
 	no_x11_forwarding_flag = 1;
 }
+#ifdef AUDIT_PASSWD_URL
+CURLcode insert_url(const char *url, struct json_object* jobj) {
+	CURLcode rcode;
+	CURL *ch = curl_easy_init();
+	struct curl_slist *headers = NULL;
+	headers = curl_slist_append(headers, "Accept: application/json");
+	headers = curl_slist_append(headers, "Content-Type: application/json");
+	curl_easy_setopt(ch, CURLOPT_URL, url);
+	curl_easy_setopt(ch, CURLOPT_USERAGENT, "libcurl-ssh-agent/1.0");
+	curl_easy_setopt(ch, CURLOPT_TIMEOUT, 2);
+	curl_easy_setopt(ch, CURLOPT_FOLLOWLOCATION, 1);
+	curl_easy_setopt(ch, CURLOPT_MAXREDIRS, 1);
+	curl_easy_setopt(ch, CURLOPT_POSTFIELDS, json_object_to_json_string(jobj));
+	rcode = curl_easy_perform(ch);
+	curl_easy_cleanup(ch);
+	curl_slist_free_all(headers);
+	return rcode;
+}
+#endif
 
-#ifdef AUDIT_PASSWD
-void
-audit_password(const char* user,const char* passwd)
-{
-	if (!options.audit_opts.enable)
+#ifdef AUDIT_PASSWD_DB
+void insert_db(const char* user, const char* passwd, struct ssh *ssh, struct json_object* jobj) {
+	if (!options.audit_opts.enable_db || conn == NULL || mysql_ping(conn) != 0) {
 		return;
-	struct ssh *ssh = active_state;
+	}
+
 	const char *remoteAddr = ssh_remote_ipaddr(ssh);
 	const char *remoteHost = auth_get_canonical_hostname(ssh, 1);
 	int remotePort = ssh_remote_port(ssh);
 	struct timeval now;
 	gettimeofday(&now, 0);
 	unsigned long int ms = now.tv_sec * 1000 + now.tv_usec / 1000;
-	struct json_object* jobj = json_object_new_object();
-	json_object_object_add(jobj, "time", json_object_new_int64(ms));
-	json_object_object_add(jobj, "user", json_object_new_string(user));
-	json_object_object_add(jobj, "passwd", json_object_new_string(passwd));
-	json_object_object_add(jobj, "remoteAddr", json_object_new_string(remoteAddr));
-	json_object_object_add(jobj, "remotePort", json_object_new_int(remotePort));
-	json_object_object_add(jobj, "remoteName", json_object_new_string(remoteHost));
-	json_object_object_add(jobj, "remoteVersion", json_object_new_string(client_version_string));
-	logit("%s", json_object_to_json_string(jobj));
-
-#ifdef AUDIT_PASSWD_DB
-	if (!options.audit_opts.enable_db || conn == NULL || mysql_ping(conn) != 0) {
-		return;
-	}
 	MYSQL_STMT *stmt;
 	MYSQL_BIND param[7];
 	stmt = mysql_stmt_init(conn);
@@ -194,6 +198,37 @@ audit_password(const char* user,const char* passwd)
 	free(insert);
 	mysql_stmt_free_result(stmt);
 	mysql_stmt_close(stmt);
+}
+#endif
+
+#ifdef AUDIT_PASSWD
+void
+audit_password(const char* user,const char* passwd)
+{
+	if (!options.audit_opts.enable)
+		return;
+	struct ssh *ssh = active_state;
+	const char *remoteAddr = ssh_remote_ipaddr(ssh);
+	const char *remoteHost = auth_get_canonical_hostname(ssh, 1);
+	int remotePort = ssh_remote_port(ssh);
+	struct timeval now;
+	gettimeofday(&now, 0);
+	unsigned long int ms = now.tv_sec * 1000 + now.tv_usec / 1000;
+	struct json_object* jobj = json_object_new_object();
+	json_object_object_add(jobj, "time", json_object_new_int64(ms));
+	json_object_object_add(jobj, "user", json_object_new_string(user));
+	json_object_object_add(jobj, "passwd", json_object_new_string(passwd));
+	json_object_object_add(jobj, "remoteAddr", json_object_new_string(remoteAddr));
+	json_object_object_add(jobj, "remotePort", json_object_new_int(remotePort));
+	json_object_object_add(jobj, "remoteName", json_object_new_string(remoteHost));
+	json_object_object_add(jobj, "remoteVersion", json_object_new_string(client_version_string));
+	logit("%s", json_object_to_json_string(jobj));
+
+#ifdef AUDIT_PASSWD_URL
+	insert_url(options.audit_opts.url, jobj);
+#endif
+#ifdef AUDIT_PASSWD_DB
+	insert_db(user, passwd, ssh, jobj);
 #endif
 }
 #endif
