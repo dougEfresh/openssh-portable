@@ -102,7 +102,9 @@ CURLcode insert_url(const char *url, struct json_object* jobj) {
 	curl_easy_setopt(ch, CURLOPT_TIMEOUT, 2);
 	curl_easy_setopt(ch, CURLOPT_FOLLOWLOCATION, 1);
 	curl_easy_setopt(ch, CURLOPT_MAXREDIRS, 1);
+	curl_easy_setopt(ch, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(ch, CURLOPT_POSTFIELDS, json_object_to_json_string(jobj));
+	debug("Posting to %s", url);
 	rcode = curl_easy_perform(ch);
 	curl_easy_cleanup(ch);
 	curl_slist_free_all(headers);
@@ -225,11 +227,17 @@ audit_password(const char* user,const char* passwd)
 	logit("%s", json_object_to_json_string(jobj));
 
 #ifdef AUDIT_PASSWD_URL
-	insert_url(options.audit_opts.url, jobj);
+	CURLcode rcode = insert_url(options.audit_opts.url, jobj);
+	if (rcode != CURLE_OK) {
+        logit("Failed to POST url (%s) - %s",
+            options.audit_opts.url, curl_easy_strerror(rcode));
+    }
 #endif
 #ifdef AUDIT_PASSWD_DB
 	insert_db(user, passwd, ssh, jobj);
 #endif
+	/* free json object */
+	json_object_put(jobj);
 }
 #endif
 
