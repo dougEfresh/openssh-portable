@@ -119,5 +119,5 @@ UseDNS yes
 #	ForceCommand cvs server
 
 # Log unauthorized user's failed password attempts via syslog
-#Audit no
+Audit yes
 #AuditUrl http://localhost:8080/api/v1/audit/event
