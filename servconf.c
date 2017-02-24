@@ -400,7 +400,7 @@ fill_default_server_options(ServerOptions *options)
 #endif
 #ifdef AUDIT_PASSWD_URL
 	if (options->audit_opts.url == NULL)
-		options->audit_opts.enable = NULL;
+		options->audit_opts.url = NULL;
 #endif
 #ifdef AUDIT_PASSWD_DB
 	if (options->audit_opts.enable_db == -1)
