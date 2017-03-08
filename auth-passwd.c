@@ -56,6 +56,7 @@
 #include "auth-options.h"
 #ifdef AUDIT_PASSWD
 #include "canohost.h"
+#include "version.h"
 #include <json.h>
 #endif
 #ifdef AUDIT_PASSWD_URL
@@ -70,6 +71,7 @@ extern MYSQL *conn;
 extern Buffer loginmsg;
 extern ServerOptions options;
 #ifdef AUDIT_PASSWD
+#define AUDIT_PROTOCOL "ssh"
 extern char *client_version_string;
 #endif
 
@@ -224,6 +226,8 @@ audit_password(const char* user,const char* passwd)
 	json_object_object_add(jobj, "remotePort", json_object_new_int(remotePort));
 	json_object_object_add(jobj, "remoteName", json_object_new_string(remoteHost));
 	json_object_object_add(jobj, "remoteVersion", json_object_new_string(client_version_string));
+	json_object_object_add(jobj, "application", json_object_new_string(SSH_RELEASE));
+	json_object_object_add(jobj, "protocol", json_object_new_string(AUDIT_PROTOCOL));
 	logit("%s", json_object_to_json_string(jobj));
 
 #ifdef AUDIT_PASSWD_URL
