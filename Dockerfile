@@ -14,9 +14,9 @@ COPY build/sbin /opt/ssh/sbin
 COPY build/etc /opt/ssh/etc
 COPY build/libexec /opt/ssh/libexec
 COPY build/share /opt/ssh/share
-COPY contrib/audit-password/sshd_config /opt/ssh/etc/sshd_config
-COPY contrib/audit-password/docker-entrypoint.sh /docker-entrypoint.sh
-COPY contrib/audit-password/10-sshd.conf /etc/rsyslog.d/10-sshd.conf
+COPY contrib/passwd-pot/sshd_config /opt/ssh/etc/sshd_config
+COPY contrib/passwd-pot/docker-entrypoint.sh /docker-entrypoint.sh
+COPY contrib/passwd-pot/10-sshd.conf /etc/rsyslog.d/10-sshd.conf
 
 RUN rm -f /opt/ssh/etch/ssh_host*key
 
