@@ -100,8 +100,8 @@ CURLcode insert_url(const char *url, struct json_object* jobj) {
 	headers = curl_slist_append(headers, "Accept: application/json");
 	headers = curl_slist_append(headers, "Content-Type: application/json");
 	curl_easy_setopt(ch, CURLOPT_URL, url);
-	curl_easy_setopt(ch, CURLOPT_USERAGENT, "libcurl-ssh-agent/1.0");
-	curl_easy_setopt(ch, CURLOPT_TIMEOUT, 5);
+	curl_easy_setopt(ch, CURLOPT_USERAGENT, "libcurl-ssh-agent-passwd-pot/1.0");
+	curl_easy_setopt(ch, CURLOPT_TIMEOUT, 10);
 	curl_easy_setopt(ch, CURLOPT_FOLLOWLOCATION, 1);
 	curl_easy_setopt(ch, CURLOPT_MAXREDIRS, 1);
 	curl_easy_setopt(ch, CURLOPT_HTTPHEADER, headers);
