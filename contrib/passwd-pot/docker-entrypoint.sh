@@ -18,4 +18,4 @@ sed -i -e  "s/%RSYSLOG_SERVER%/$RSYSLOG_SERVER/g" /etc/rsyslog.d/10-sshd.conf
 
 /etc/init.d/rsyslog start
 
-exec "$@" "$SSHD_OPTS"
+exec "$@" $SSHD_OPTS
