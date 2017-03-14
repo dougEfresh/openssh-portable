@@ -1,7 +1,6 @@
 sudo: required
 services:
   - docker
-install: make get-deps
 language: c
 compiler: gcc
 os:
