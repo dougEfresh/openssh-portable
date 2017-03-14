@@ -5,7 +5,7 @@ MAINTAINER Doug Chimento <dchimento@gmail.com>
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get -qq update && \
     apt-get -qqy install --no-install-recommends \
-       libjson-c-dev libcurl4-openssl-dev libz-dev libssl-dev rsyslog curl ca-certificates
+    libjson-c-dev libcurl4-openssl-dev libz-dev libssl-dev rsyslog curl ca-certificates git
 
 RUN mkdir /var/empty
 RUN mkdir /opt/ssh
