@@ -1,15 +1,14 @@
 [Unit]
-Description=Secure Shell server with auditing
+Description=sshd-passwd-pot
 After=network.target auditd.service docker.service
 Requires=docker.service
 
 [Service]
-EnvironmentFile=-/etc/default/sshd-password-pot
+EnvironmentFile=-/etc/default/sshd-passwd-pot
 TimeoutStartSec=0
 Restart=always
-ExecStartPre=/usr/bin/docker pull dougefresh/sshd-password-pot
-ExecStart=/usr/bin/systemd-docker run -p 22:2222 --rm --name %n dougefresh/sshd-password-pot /opt/ssh/sbin/sshd -D $SSHD_OPTS
+ExecStartPre=/usr/bin/docker pull --all-tags dougefresh/sshd-passwd-pot
+ExecStart=/usr/bin/systemd-docker run $DOCKER_OPTS 
 
 [Install]
 WantedBy=multi-user.target
-

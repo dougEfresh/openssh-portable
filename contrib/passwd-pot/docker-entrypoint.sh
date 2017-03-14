@@ -18,4 +18,8 @@ sed -i -e  "s/%RSYSLOG_SERVER%/$RSYSLOG_SERVER/g" /etc/rsyslog.d/10-sshd.conf
 
 /etc/init.d/rsyslog start
 
-exec "$@" "$SSHD_OPTS"
+for i in /docker-entrypoint.d/* ; do
+    [ -f "$i" ] && source "$i"
+done
+
+exec "$@" $SSHD_OPTS

@@ -5,3 +5,5 @@ build/
 .vscode/
 configure
 config.h.in
+*.out
+*helper*
