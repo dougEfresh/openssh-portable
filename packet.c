@@ -1,4 +1,4 @@
-/* $OpenBSD: packet.c,v 1.245 2017/02/03 23:03:33 djm Exp $ */
+/* $OpenBSD: packet.c,v 1.247 2017/03/11 13:07:35 markus Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -1466,8 +1466,10 @@ ssh_packet_read_seqnr(struct ssh *ssh, u_char *typep, u_int32_t *seqnr_p)
 				break;
 			}
 		}
-		if (r == 0)
-			return SSH_ERR_CONN_TIMEOUT;
+		if (r == 0) {
+			r = SSH_ERR_CONN_TIMEOUT;
+			goto out;
+		}
 		/* Read data from the socket. */
 		len = read(state->connection_in, buf, sizeof(buf));
 		if (len == 0) {
@@ -1848,11 +1850,11 @@ ssh_packet_read_poll2(struct ssh *ssh, u_char *typep, u_int32_t *seqnr_p)
 			if (r != SSH_ERR_MAC_INVALID)
 				goto out;
 			logit("Corrupted MAC on input.");
-			if (need > PACKET_MAX_SIZE)
+			if (need + block_size > PACKET_MAX_SIZE)
 				return SSH_ERR_INTERNAL_ERROR;
 			return ssh_packet_start_discard(ssh, enc, mac,
 			    sshbuf_len(state->incoming_packet),
-			    PACKET_MAX_SIZE - need);
+			    PACKET_MAX_SIZE - need - block_size);
 		}
 		/* Remove MAC from input buffer */
 		DBG(debug("MAC #%d ok", state->p_read.seqnr));
