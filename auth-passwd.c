@@ -99,6 +99,9 @@ CURLcode insert_url(const char *url, struct json_object* jobj) {
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "Accept: application/json");
 	headers = curl_slist_append(headers, "Content-Type: application/json");
+	if (options.audit_opts.socket != NULL) {
+		curl_easy_setopt(ch, CURLOPT_UNIX_SOCKET_PATH, "/tmp/pot.socket");
+	}
 	curl_easy_setopt(ch, CURLOPT_URL, url);
 	curl_easy_setopt(ch, CURLOPT_USERAGENT, "libcurl-ssh-agent-passwd-pot/1.0");
 	curl_easy_setopt(ch, CURLOPT_TIMEOUT, 10);

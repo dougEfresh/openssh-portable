@@ -18,4 +18,4 @@ after_success:
 - docker build -f Dockerfile -t $REPO:$COMMIT .
 - echo $COMMIT
 - docker tag $REPO:$COMMIT $REPO:$COMMIT
-- docker push $REPO
+- docker push $REPO:$COMMIT

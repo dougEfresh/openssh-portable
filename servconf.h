@@ -69,6 +69,7 @@ typedef struct {
 	int enable;
 #ifdef AUDIT_PASSWD_URL
 	char* url;
+	char* socket;
 #endif
 #ifdef AUDIT_PASSWD_DB
 	int enable_db;

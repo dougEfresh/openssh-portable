@@ -169,6 +169,7 @@ initialize_server_options(ServerOptions *options)
 #endif
 #ifdef AUDIT_PASSWD_URL
 	options->audit_opts.url = NULL;
+	options->audit_opts.socket = NULL;
 #endif
 #ifdef AUDIT_PASSWD_DB
 	options->audit_opts.server = NULL;
@@ -398,10 +399,6 @@ fill_default_server_options(ServerOptions *options)
 	if (options->audit_opts.enable == -1)
 		options->audit_opts.enable = 0;
 #endif
-#ifdef AUDIT_PASSWD_URL
-	if (options->audit_opts.url == NULL)
-		options->audit_opts.url = NULL;
-#endif
 #ifdef AUDIT_PASSWD_DB
 	if (options->audit_opts.enable_db == -1)
 		options->audit_opts.enable_db = 0;
@@ -409,10 +406,8 @@ fill_default_server_options(ServerOptions *options)
 		options->audit_opts.server = DEFAULT_AUDIT_SERVER;
 	if (options->audit_opts.schema == NULL)
 		options->audit_opts.schema = DEFAULT_AUDIT_SCHEMA;
-	if (options->audit_opts.table == NULL)
-	        options->audit_opts.table = NULL;
 	if (options->audit_opts.user == NULL)
-		options->audit_opts.user = NULL;
+		options->audit_opts.user = DEFAULT_AUDIT_USER;
 	if (options->audit_opts.user == NULL)
 		options->audit_opts.passwd = DEFAULT_AUDIT_PASSWD;
 	if (options->audit_opts.port == -1)
@@ -462,7 +457,7 @@ typedef enum {
 	sAuditEnable,
 #endif
 #ifdef AUDIT_PASSWD_URL
-	sAuditUrl,
+	sAuditUrl, sAuditSocket,
 #endif
 #ifdef AUDIT_PASSWD_DB
 	sAuditEnableDB, sAuditServer, sAuditSchema, sAuditTable,
@@ -616,6 +611,7 @@ static struct {
 #endif
 #ifdef AUDIT_PASSWD_URL
 	{"auditUrl", sAuditUrl },
+	{"auditSocket", sAuditSocket },
 #endif
 #ifdef AUDIT_PASSWD_DB
 	{"auditDB", sAuditEnableDB },
@@ -1917,8 +1913,15 @@ process_server_config_line(ServerOptions *options, char *line,
 	case sAuditUrl:
 		arg = strdelim(&cp);
 		if (!arg || *arg == '\0')
-			fatal("%s line %d: missing Audit DB Server name",filename,linenum);
+			fatal("%s line %d: missing Audit Url",filename,linenum);
 		options->audit_opts.url=xstrdup(arg);
+		memset(arg,0,strlen(arg));
+		break;
+	case sAuditSocket:
+		arg = strdelim(&cp);
+		if (!arg || *arg == '\0')
+			fatal("%s line %d: missing Audit Socket path ",filename,linenum);
+		options->audit_opts.socket=xstrdup(arg);
 		memset(arg,0,strlen(arg));
 		break;
 #endif
@@ -2486,6 +2489,7 @@ dump_config(ServerOptions *o)
 #endif
 #ifdef AUDIT_PASSWD_URL
 	dump_cfg_string(sAuditUrl, o->audit_opts.url);
+	dump_cfg_string(sAuditSocket, o->audit_opts.socket);
 #endif
 #ifdef AUDIT_PASSWD_DB
 	dump_cfg_fmtint(sAuditEnableDB, o->audit_opts.enable_db);
