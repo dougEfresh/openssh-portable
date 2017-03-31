@@ -1,4 +1,4 @@
-/* $OpenBSD: sshd.c,v 1.483 2017/02/24 03:16:34 djm Exp $ */
+/* $OpenBSD: sshd.c,v 1.485 2017/03/15 03:52:30 deraadt Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -236,6 +236,7 @@ int startup_pipe;		/* in child */
 int use_privsep = -1;
 struct monitor *pmonitor = NULL;
 int privsep_is_preauth = 1;
+static int privsep_chroot = 1;
 
 /* global authentication context */
 Authctxt *the_authctxt = NULL;
@@ -554,7 +555,7 @@ privsep_preauth_child(void)
 	demote_sensitive_data();
 
 	/* Demote the child */
-	if (getuid() == 0 || geteuid() == 0) {
+	if (privsep_chroot) {
 		/* Change our root directory */
 		if (chroot(_PATH_PRIVSEP_CHROOT_DIR) == -1)
 			fatal("chroot(\"%s\"): %s", _PATH_PRIVSEP_CHROOT_DIR,
@@ -1719,8 +1720,9 @@ main(int ac, char **av)
 	);
 
 	/* Store privilege separation user for later use if required. */
+	privsep_chroot = use_privsep && (getuid() == 0 || geteuid() == 0);
 	if ((privsep_pw = getpwnam(SSH_PRIVSEP_USER)) == NULL) {
-		if (use_privsep || options.kerberos_authentication)
+		if (privsep_chroot || options.kerberos_authentication)
 			fatal("Privilege separation user %s does not exist",
 			    SSH_PRIVSEP_USER);
 	} else {
@@ -1754,6 +1756,15 @@ main(int ac, char **av)
 			continue;
 		key = key_load_private(options.host_key_files[i], "", NULL);
 		pubkey = key_load_public(options.host_key_files[i], NULL);
+
+		if ((pubkey != NULL && pubkey->type == KEY_RSA1) ||
+		    (key != NULL && key->type == KEY_RSA1)) {
+			verbose("Ignoring RSA1 key %s",
+			    options.host_key_files[i]);
+			key_free(key);
+			key_free(pubkey);
+			continue;
+		}
 		if (pubkey == NULL && key != NULL)
 			pubkey = key_demote(key);
 		sensitive_data.host_keys[i] = key;
@@ -1837,7 +1848,7 @@ main(int ac, char **av)
 		    key_type(key));
 	}
 
-	if (use_privsep) {
+	if (privsep_chroot) {
 		struct stat st;
 
 		if ((stat(_PATH_PRIVSEP_CHROOT_DIR, &st) == -1) ||
