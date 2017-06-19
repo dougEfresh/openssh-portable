@@ -1,5 +1,5 @@
 
-/* $OpenBSD: servconf.c,v 1.305 2017/03/10 04:11:00 dtucker Exp $ */
+/* $OpenBSD: servconf.c,v 1.308 2017/05/17 01:24:17 djm Exp $ */
 /*
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
  *                    All rights reserved
@@ -449,7 +449,7 @@ static struct {
 	{ "keyregenerationinterval", sDeprecated, SSHCFG_GLOBAL },
 	{ "permitrootlogin", sPermitRootLogin, SSHCFG_ALL },
 	{ "syslogfacility", sLogFacility, SSHCFG_GLOBAL },
-	{ "loglevel", sLogLevel, SSHCFG_GLOBAL },
+	{ "loglevel", sLogLevel, SSHCFG_ALL },
 	{ "rhostsauthentication", sDeprecated, SSHCFG_GLOBAL },
 	{ "rhostsrsaauthentication", sDeprecated, SSHCFG_ALL },
 	{ "hostbasedauthentication", sHostbasedAuthentication, SSHCFG_ALL },
@@ -535,7 +535,7 @@ static struct {
 	{ "clientalivecountmax", sClientAliveCountMax, SSHCFG_ALL },
 	{ "authorizedkeysfile", sAuthorizedKeysFile, SSHCFG_ALL },
 	{ "authorizedkeysfile2", sDeprecated, SSHCFG_ALL },
-	{ "useprivilegeseparation", sUsePrivilegeSeparation, SSHCFG_GLOBAL},
+	{ "useprivilegeseparation", sDeprecated, SSHCFG_GLOBAL},
 	{ "acceptenv", sAcceptEnv, SSHCFG_ALL },
 	{ "permittunnel", sPermitTunnel, SSHCFG_ALL },
 	{ "permittty", sPermitTTY, SSHCFG_ALL },
@@ -933,13 +933,6 @@ static const struct multistate multistate_gatewayports[] = {
 	{ "clientspecified",		2 },
 	{ "yes",			1 },
 	{ "no",				0 },
-	{ NULL, -1 }
-};
-static const struct multistate multistate_privsep[] = {
-	{ "yes",			PRIVSEP_NOSANDBOX },
-	{ "sandbox",			PRIVSEP_ON },
-	{ "nosandbox",			PRIVSEP_NOSANDBOX },
-	{ "no",				PRIVSEP_OFF },
 	{ NULL, -1 }
 };
 static const struct multistate multistate_tcpfwd[] = {
@@ -1352,7 +1345,7 @@ process_server_config_line(ServerOptions *options, char *line,
 		if (value == SYSLOG_LEVEL_NOT_SET)
 			fatal("%.200s line %d: unsupported log level '%s'",
 			    filename, linenum, arg ? arg : "<NONE>");
-		if (*log_level_ptr == -1)
+		if (*activep && *log_level_ptr == -1)
 			*log_level_ptr = (LogLevel) value;
 		break;
 
@@ -1373,11 +1366,6 @@ process_server_config_line(ServerOptions *options, char *line,
 	case sDisableForwarding:
 		intptr = &options->disable_forwarding;
 		goto parse_flag;
-
-	case sUsePrivilegeSeparation:
-		intptr = &use_privsep;
-		multistate_ptr = multistate_privsep;
-		goto parse_multistate;
 
 	case sAllowUsers:
 		while ((arg = strdelim(&cp)) && *arg != '\0') {
@@ -2001,6 +1989,7 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 	M_CP_INTOPT(ip_qos_bulk);
 	M_CP_INTOPT(rekey_limit);
 	M_CP_INTOPT(rekey_interval);
+	M_CP_INTOPT(log_level);
 
 	/*
 	 * The bind_mask is a mode_t that may be unsigned, so we can't use
@@ -2107,8 +2096,6 @@ fmt_intarg(ServerOpCodes code, int val)
 		return fmt_multistate_int(val, multistate_gatewayports);
 	case sCompression:
 		return fmt_multistate_int(val, multistate_compression);
-	case sUsePrivilegeSeparation:
-		return fmt_multistate_int(val, multistate_privsep);
 	case sAllowTcpForwarding:
 		return fmt_multistate_int(val, multistate_tcpfwd);
 	case sAllowStreamLocalForwarding:
@@ -2284,7 +2271,6 @@ dump_config(ServerOptions *o)
 	dump_cfg_fmtint(sDisableForwarding, o->disable_forwarding);
 	dump_cfg_fmtint(sAllowStreamLocalForwarding, o->allow_streamlocal_forwarding);
 	dump_cfg_fmtint(sStreamLocalBindUnlink, o->fwd_opts.streamlocal_bind_unlink);
-	dump_cfg_fmtint(sUsePrivilegeSeparation, use_privsep);
 	dump_cfg_fmtint(sFingerprintHash, o->fingerprint_hash);
 
 	/* string arguments */

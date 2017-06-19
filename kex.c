@@ -1,4 +1,4 @@
-/* $OpenBSD: kex.c,v 1.130 2017/03/10 04:07:20 djm Exp $ */
+/* $OpenBSD: kex.c,v 1.134 2017/06/13 12:13:59 djm Exp $ */
 /*
  * Copyright (c) 2000, 2001 Markus Friedl.  All rights reserved.
  *
@@ -54,17 +54,9 @@
 #include "sshbuf.h"
 #include "digest.h"
 
-#if OPENSSL_VERSION_NUMBER >= 0x00907000L
-# if defined(HAVE_EVP_SHA256)
-# define evp_ssh_sha256 EVP_sha256
-# else
-extern const EVP_MD *evp_ssh_sha256(void);
-# endif
-#endif
-
 /* prototype */
 static int kex_choose_conf(struct ssh *);
-static int kex_input_newkeys(int, u_int32_t, void *);
+static int kex_input_newkeys(int, u_int32_t, struct ssh *);
 
 static const char *proposal_names[PROPOSAL_MAX] = {
 	"KEX algorithms",
@@ -323,9 +315,8 @@ kex_prop_free(char **proposal)
 
 /* ARGSUSED */
 static int
-kex_protocol_error(int type, u_int32_t seq, void *ctxt)
+kex_protocol_error(int type, u_int32_t seq, struct ssh *ssh)
 {
-	struct ssh *ssh = active_state; /* XXX */
 	int r;
 
 	error("kex protocol error: type %d seq %u", type, seq);
@@ -341,7 +332,6 @@ kex_reset_dispatch(struct ssh *ssh)
 {
 	ssh_dispatch_range(ssh, SSH2_MSG_TRANSPORT_MIN,
 	    SSH2_MSG_TRANSPORT_MAX, &kex_protocol_error);
-	ssh_dispatch_set(ssh, SSH2_MSG_KEXINIT, &kex_input_kexinit);
 }
 
 static int
@@ -384,12 +374,13 @@ kex_send_newkeys(struct ssh *ssh)
 }
 
 int
-kex_input_ext_info(int type, u_int32_t seq, void *ctxt)
+kex_input_ext_info(int type, u_int32_t seq, struct ssh *ssh)
 {
-	struct ssh *ssh = ctxt;
 	struct kex *kex = ssh->kex;
 	u_int32_t i, ninfo;
-	char *name, *val, *found;
+	char *name, *found;
+	u_char *val;
+	size_t vlen;
 	int r;
 
 	debug("SSH2_MSG_EXT_INFO received");
@@ -399,12 +390,17 @@ kex_input_ext_info(int type, u_int32_t seq, void *ctxt)
 	for (i = 0; i < ninfo; i++) {
 		if ((r = sshpkt_get_cstring(ssh, &name, NULL)) != 0)
 			return r;
-		if ((r = sshpkt_get_cstring(ssh, &val, NULL)) != 0) {
+		if ((r = sshpkt_get_string(ssh, &val, &vlen)) != 0) {
 			free(name);
 			return r;
 		}
-		debug("%s: %s=<%s>", __func__, name, val);
 		if (strcmp(name, "server-sig-algs") == 0) {
+			/* Ensure no \0 lurking in value */
+			if (memchr(val, '\0', vlen) != NULL) {
+				error("%s: nul byte in %s", __func__, name);
+				return SSH_ERR_INVALID_FORMAT;
+			}
+			debug("%s: %s=<%s>", __func__, name, val);
 			found = match_list("rsa-sha2-256", val, NULL);
 			if (found) {
 				kex->rsa_sha2 = 256;
@@ -415,7 +411,8 @@ kex_input_ext_info(int type, u_int32_t seq, void *ctxt)
 				kex->rsa_sha2 = 512;
 				free(found);
 			}
-		}
+		} else
+			debug("%s: %s (unrecognised)", __func__, name);
 		free(name);
 		free(val);
 	}
@@ -423,14 +420,14 @@ kex_input_ext_info(int type, u_int32_t seq, void *ctxt)
 }
 
 static int
-kex_input_newkeys(int type, u_int32_t seq, void *ctxt)
+kex_input_newkeys(int type, u_int32_t seq, struct ssh *ssh)
 {
-	struct ssh *ssh = ctxt;
 	struct kex *kex = ssh->kex;
 	int r;
 
 	debug("SSH2_MSG_NEWKEYS received");
 	ssh_dispatch_set(ssh, SSH2_MSG_NEWKEYS, &kex_protocol_error);
+	ssh_dispatch_set(ssh, SSH2_MSG_KEXINIT, &kex_input_kexinit);
 	if ((r = sshpkt_get_end(ssh)) != 0)
 		return r;
 	if ((r = ssh_set_newkeys(ssh, MODE_IN)) != 0)
@@ -475,9 +472,8 @@ kex_send_kexinit(struct ssh *ssh)
 
 /* ARGSUSED */
 int
-kex_input_kexinit(int type, u_int32_t seq, void *ctxt)
+kex_input_kexinit(int type, u_int32_t seq, struct ssh *ssh)
 {
-	struct ssh *ssh = ctxt;
 	struct kex *kex = ssh->kex;
 	const u_char *ptr;
 	u_int i;
@@ -545,6 +541,7 @@ kex_new(struct ssh *ssh, char *proposal[PROPOSAL_MAX], struct kex **kexp)
 		goto out;
 	kex->done = 0;
 	kex_reset_dispatch(ssh);
+	ssh_dispatch_set(ssh, SSH2_MSG_KEXINIT, &kex_input_kexinit);
 	r = 0;
 	*kexp = kex;
  out:
@@ -987,47 +984,6 @@ kex_derive_keys_bn(struct ssh *ssh, u_char *hash, u_int hashlen,
 }
 #endif
 
-#ifdef WITH_SSH1
-int
-derive_ssh1_session_id(BIGNUM *host_modulus, BIGNUM *server_modulus,
-    u_int8_t cookie[8], u_int8_t id[16])
-{
-	u_int8_t hbuf[2048], sbuf[2048], obuf[SSH_DIGEST_MAX_LENGTH];
-	struct ssh_digest_ctx *hashctx = NULL;
-	size_t hlen, slen;
-	int r;
-
-	hlen = BN_num_bytes(host_modulus);
-	slen = BN_num_bytes(server_modulus);
-	if (hlen < (512 / 8) || (u_int)hlen > sizeof(hbuf) ||
-	    slen < (512 / 8) || (u_int)slen > sizeof(sbuf))
-		return SSH_ERR_KEY_BITS_MISMATCH;
-	if (BN_bn2bin(host_modulus, hbuf) <= 0 ||
-	    BN_bn2bin(server_modulus, sbuf) <= 0) {
-		r = SSH_ERR_LIBCRYPTO_ERROR;
-		goto out;
-	}
-	if ((hashctx = ssh_digest_start(SSH_DIGEST_MD5)) == NULL) {
-		r = SSH_ERR_ALLOC_FAIL;
-		goto out;
-	}
-	if (ssh_digest_update(hashctx, hbuf, hlen) != 0 ||
-	    ssh_digest_update(hashctx, sbuf, slen) != 0 ||
-	    ssh_digest_update(hashctx, cookie, 8) != 0 ||
-	    ssh_digest_final(hashctx, obuf, sizeof(obuf)) != 0) {
-		r = SSH_ERR_LIBCRYPTO_ERROR;
-		goto out;
-	}
-	memcpy(id, obuf, ssh_digest_bytes(SSH_DIGEST_MD5));
-	r = 0;
- out:
-	ssh_digest_free(hashctx);
-	explicit_bzero(hbuf, sizeof(hbuf));
-	explicit_bzero(sbuf, sizeof(sbuf));
-	explicit_bzero(obuf, sizeof(obuf));
-	return r;
-}
-#endif
 
 #if defined(DEBUG_KEX) || defined(DEBUG_KEXDH) || defined(DEBUG_KEXECDH)
 void

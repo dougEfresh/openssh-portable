@@ -109,13 +109,10 @@ AC_CHECK_DECL([PR_SET_NO_NEW_PRIVS], [have_linux_no_new_privs=1], , [
 ])
 
 openssl=yes
-ssh1=no
-COMMENT_OUT_RSA1="#no ssh1#"
 AC_ARG_WITH([openssl],
 	[  --without-openssl       Disable use of OpenSSL; use only limited internal crypto **EXPERIMENTAL** ],
 	[  if test "x$withval" = "xno" ; then
 		openssl=no
-		ssh1=no
 	   fi
 	]
 )
@@ -123,31 +120,6 @@ AC_MSG_CHECKING([whether OpenSSL will be used for cryptography])
 if test "x$openssl" = "xyes" ; then
 	AC_MSG_RESULT([yes])
 	AC_DEFINE_UNQUOTED([WITH_OPENSSL], [1], [use libcrypto for cryptography])
-else
-	AC_MSG_RESULT([no])
-fi
-
-AC_ARG_WITH([ssh1],
-	[  --with-ssh1             Enable support for SSH protocol 1],
-	[
-		if test "x$withval" = "xyes" ; then
-			if test "x$openssl" = "xno" ; then
-				AC_MSG_ERROR([Cannot enable SSH protocol 1 with OpenSSL disabled])
-			fi
-			ssh1=yes
-			COMMENT_OUT_RSA1=""
-		elif test "x$withval" = "xno" ; then
-			ssh1=no
-		else
-			AC_MSG_ERROR([unknown --with-ssh1 argument])
-		fi
-	]
-)
-AC_MSG_CHECKING([whether SSH protocol 1 support is enabled])
-if test "x$ssh1" = "xyes" ; then
-	AC_MSG_RESULT([yes])
-	AC_DEFINE_UNQUOTED([WITH_SSH1], [1], [include SSH protocol version 1 support])
-	AC_SUBST([COMMENT_OUT_RSA1])
 else
 	AC_MSG_RESULT([no])
 fi
@@ -179,6 +151,7 @@ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[int main(void) { return 0; }]])],
 CFLAGS="$saved_CFLAGS"
 
 if test "$GCC" = "yes" || test "$GCC" = "egcs"; then
+	OSSH_CHECK_CFLAG_COMPILE([-pipe])
 	OSSH_CHECK_CFLAG_COMPILE([-Qunused-arguments])
 	OSSH_CHECK_CFLAG_COMPILE([-Wunknown-warning-option])
 	OSSH_CHECK_CFLAG_COMPILE([-Wall])
@@ -1486,6 +1459,7 @@ AC_ARG_WITH(ldns,
 		else
 			LIBS="$LIBS `$LDNSCONFIG --libs`"
 			CPPFLAGS="$CPPFLAGS `$LDNSCONFIG --cflags`"
+			ldns=yes
 		fi
 	elif test "x$withval" != "xno" ; then
 			CPPFLAGS="$CPPFLAGS -I${withval}/include"
@@ -1704,6 +1678,7 @@ AC_CHECK_FUNCS([ \
 	getgrouplist \
 	getnameinfo \
 	getopt \
+	getpagesize \
 	getpeereid \
 	getpeerucred \
 	getpgid \
@@ -1717,6 +1692,7 @@ AC_CHECK_FUNCS([ \
 	inet_ntoa \
 	inet_ntop \
 	innetgr \
+	llabs \
 	login_getcapbool \
 	md5_crypt \
 	memmove \
@@ -1733,6 +1709,7 @@ AC_CHECK_FUNCS([ \
 	readpassphrase \
 	reallocarray \
 	recvmsg \
+	recallocarray \
 	rresvport_af \
 	sendmsg \
 	setdtablesize \
@@ -2531,8 +2508,8 @@ if test "x$openssl" = "xyes" ; then
 			ssl_library_ver=`cat conftest.ssllibver`
 			# Check version is supported.
 			case "$ssl_library_ver" in
-				0090[[0-7]]*|009080[[0-5]]*)
-					AC_MSG_ERROR([OpenSSL >= 0.9.8f required (have "$ssl_library_ver")])
+				10000*|0*)
+					AC_MSG_ERROR([OpenSSL >= 1.0.1 required (have "$ssl_library_ver")])
 			                ;;
 			        *) ;;
 			esac
@@ -2767,9 +2744,6 @@ if test "x$openssl" = "xyes" ; then
 	#include <openssl/evp.h>
 	#include <openssl/objects.h>
 	#include <openssl/opensslv.h>
-	#if OPENSSL_VERSION_NUMBER < 0x0090807f /* 0.9.8g */
-	# error "OpenSSL < 0.9.8g has unreliable ECC code"
-	#endif
 		]], [[
 		EC_KEY *e = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
 		const EVP_MD *m = EVP_sha256(); /* We need this too */
@@ -2788,9 +2762,6 @@ if test "x$openssl" = "xyes" ; then
 	#include <openssl/evp.h>
 	#include <openssl/objects.h>
 	#include <openssl/opensslv.h>
-	#if OPENSSL_VERSION_NUMBER < 0x0090807f /* 0.9.8g */
-	# error "OpenSSL < 0.9.8g has unreliable ECC code"
-	#endif
 		]], [[
 		EC_KEY *e = EC_KEY_new_by_curve_name(NID_secp384r1);
 		const EVP_MD *m = EVP_sha384(); /* We need this too */
@@ -2809,9 +2780,6 @@ if test "x$openssl" = "xyes" ; then
 	#include <openssl/evp.h>
 	#include <openssl/objects.h>
 	#include <openssl/opensslv.h>
-	#if OPENSSL_VERSION_NUMBER < 0x0090807f /* 0.9.8g */
-	# error "OpenSSL < 0.9.8g has unreliable ECC code"
-	#endif
 		]], [[
 		EC_KEY *e = EC_KEY_new_by_curve_name(NID_secp521r1);
 		const EVP_MD *m = EVP_sha512(); /* We need this too */
@@ -3196,7 +3164,8 @@ AC_RUN_IFELSE(
 	 select_works_with_rlimit=yes],
 	[AC_MSG_RESULT([no])
 	 select_works_with_rlimit=no],
-	[AC_MSG_WARN([cross compiling: assuming yes])]
+	[AC_MSG_WARN([cross compiling: assuming yes])
+	 select_works_with_rlimit=yes]
 )
 
 AC_MSG_CHECKING([if setrlimit(RLIMIT_NOFILE,{0,0}) works])
@@ -3222,7 +3191,8 @@ AC_RUN_IFELSE(
 	 rlimit_nofile_zero_works=yes],
 	[AC_MSG_RESULT([no])
 	 rlimit_nofile_zero_works=no],
-	[AC_MSG_WARN([cross compiling: assuming yes])]
+	[AC_MSG_WARN([cross compiling: assuming yes])
+	 rlimit_nofile_zero_works=yes]
 )
 
 AC_MSG_CHECKING([if setrlimit RLIMIT_FSIZE works])
@@ -3844,6 +3814,8 @@ OSSH_CHECK_HEADER_FOR_FIELD([ut_time], [utmpx.h], [HAVE_TIME_IN_UTMPX])
 OSSH_CHECK_HEADER_FOR_FIELD([ut_tv], [utmpx.h], [HAVE_TV_IN_UTMPX])
 
 AC_CHECK_MEMBERS([struct stat.st_blksize])
+AC_CHECK_MEMBERS([struct stat.st_mtim])
+AC_CHECK_MEMBERS([struct stat.st_mtime])
 AC_CHECK_MEMBERS([struct passwd.pw_gecos, struct passwd.pw_class,
 struct passwd.pw_change, struct passwd.pw_expire],
 [], [], [[
