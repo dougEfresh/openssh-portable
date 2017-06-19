@@ -1,4 +1,4 @@
-/* $OpenBSD: sshkey.h,v 1.15 2017/03/10 04:07:20 djm Exp $ */
+/* $OpenBSD: sshkey.h,v 1.19 2017/06/13 11:22:15 djm Exp $ */
 
 /*
  * Copyright (c) 2000, 2001 Markus Friedl.  All rights reserved.
@@ -46,14 +46,13 @@
 # define EC_POINT	void
 #endif /* WITH_OPENSSL */
 
-#define SSH_RSA_MINIMUM_MODULUS_SIZE	768
+#define SSH_RSA_MINIMUM_MODULUS_SIZE	1024
 #define SSH_KEY_MAX_SIGN_DATA_SIZE	(1 << 20)
 
 struct sshbuf;
 
 /* Key types */
 enum sshkey_types {
-	KEY_RSA1,
 	KEY_RSA,
 	KEY_DSA,
 	KEY_ECDSA,
@@ -125,6 +124,7 @@ int		 sshkey_fingerprint_raw(const struct sshkey *k,
     int, u_char **retp, size_t *lenp);
 const char	*sshkey_type(const struct sshkey *);
 const char	*sshkey_cert_type(const struct sshkey *);
+int		 sshkey_format_text(const struct sshkey *, struct sshbuf *);
 int		 sshkey_write(const struct sshkey *, FILE *);
 int		 sshkey_read(struct sshkey *, char **);
 u_int		 sshkey_size(const struct sshkey *);
@@ -185,8 +185,6 @@ int	sshkey_private_deserialize(struct sshbuf *buf,  struct sshkey **keyp);
 int	sshkey_private_to_fileblob(struct sshkey *key, struct sshbuf *blob,
     const char *passphrase, const char *comment,
     int force_new_format, const char *new_format_cipher, int new_format_rounds);
-int	sshkey_parse_public_rsa1_fileblob(struct sshbuf *blob,
-    struct sshkey **keyp, char **commentp);
 int	sshkey_parse_private_fileblob(struct sshbuf *buffer,
     const char *passphrase, struct sshkey **keyp, char **commentp);
 int	sshkey_parse_private_fileblob_type(struct sshbuf *blob, int type,
