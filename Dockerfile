@@ -3,11 +3,12 @@ from ubuntu:latest
 MAINTAINER Doug Chimento <dchimento@gmail.com>
 
 ENV DEBIAN_FRONTEND noninteractive
-RUN apk add --no-cache \
-    curl-dev zlib-dev openssl-dev rsyslog ca-certificates curl json-c-dev 
+RUN apt-get -qq update && \
+    apt-get -qqy install --no-install-recommends \
+    libjson-c-dev libcurl4-openssl-dev libz-dev libssl-dev rsyslog curl ca-certificates git
 
 RUN mkdir /var/empty
-RUN mkdir /opt/ssh
+RUN mkdir -p /opt/ssh
 COPY build/bin /opt/ssh/bin
 COPY build/sbin /opt/ssh/sbin
 COPY build/etc /opt/ssh/etc
