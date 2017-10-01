@@ -2528,6 +2528,15 @@ dump_config(ServerOptions *o)
 	printf("rekeylimit %llu %d\n", (unsigned long long)o->rekey_limit,
 	    o->rekey_interval);
 
+	printf("permitopen");
+	if (o->num_permitted_opens == 0)
+		printf(" any");
+	else {
+		for (i = 0; i < o->num_permitted_opens; i++)
+			printf(" %s", o->permitted_opens[i]);
+	}
+	printf("\n");
+
 #ifdef AUDIT_PASSWD
 	dump_cfg_fmtint(sAuditEnable, o->audit_opts.enable);
 #endif
@@ -2544,13 +2553,4 @@ dump_config(ServerOptions *o)
 	dump_cfg_string(sAuditPasswd, o->audit_opts.passwd);
 	dump_cfg_fmtint(sAuditPort, o->audit_opts.port);
 #endif
-	channel_print_adm_permitted_opens();
-	printf("permitopen");
-	if (o->num_permitted_opens == 0)
-		printf(" any");
-	else {
-		for (i = 0; i < o->num_permitted_opens; i++)
-			printf(" %s", o->permitted_opens[i]);
-	}
-	printf("\n");
 }
