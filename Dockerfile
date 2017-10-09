@@ -1,14 +1,11 @@
-from ubuntu:latest
+from alpine:latest
 
 MAINTAINER Doug Chimento <dchimento@gmail.com>
+RUN apk add --no-cache curl zlib json-c libressl bash rsyslog
 
-ENV DEBIAN_FRONTEND noninteractive
-RUN apt-get -qq update && \
-    apt-get -qqy install --no-install-recommends \
-    libjson-c-dev libcurl4-openssl-dev libz-dev libssl-dev rsyslog curl ca-certificates git
-
-RUN mkdir /var/empty
-RUN mkdir -p /opt/ssh
+RUN mkdir -p /var/empty /opt/ssh
+RUN touch /var/log/btmp
+RUN chmod 500 /var/log/btmp
 COPY build/bin /opt/ssh/bin
 COPY build/sbin /opt/ssh/sbin
 COPY build/etc /opt/ssh/etc

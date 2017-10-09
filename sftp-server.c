@@ -1158,7 +1158,7 @@ process_realpath(u_int32_t id)
 	}
 	debug3("request %u: realpath", id);
 	verbose("realpath \"%s\"", path);
-	if (realpath(path, resolvedname) == NULL) {
+	if (ssh_realpath(path, resolvedname) == NULL) {
 		send_status(id, errno_to_portable(errno));
 	} else {
 		Stat s;

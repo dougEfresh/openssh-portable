@@ -786,7 +786,7 @@ construct_utmpx(struct logininfo *li, struct utmpx *utx)
 	if (li->hostaddr.sa.sa_family == AF_INET)
 		utx->ut_addr = li->hostaddr.sa_in.sin_addr.s_addr;
 # endif
-# ifdef HAVE_ADDR_V6_IN_UTMP
+# ifdef HAVE_ADDR_V6_IN_UTMPX
 	/* this is just a 128-bit IPv6 address */
 	if (li->hostaddr.sa.sa_family == AF_INET6) {
 		sa6 = ((struct sockaddr_in6 *)&li->hostaddr.sa);

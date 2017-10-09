@@ -31,7 +31,7 @@
 
 #include "includes.h"
 
-#if !defined(HAVE_REALPATH) || defined(BROKEN_REALPATH)
+#if 1
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -58,7 +58,7 @@
  * in which case the path which caused trouble is left in (resolved).
  */
 char *
-realpath(const char *path, char *resolved)
+ssh_realpath(const char *path, char *resolved)
 {
 	struct stat sb;
 	char *p, *q, *s;
