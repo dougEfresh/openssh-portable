@@ -1,4 +1,4 @@
-from alpine:latest
+from alpine:3.7
 
 MAINTAINER Doug Chimento <dchimento@gmail.com>
 RUN apk add --no-cache curl zlib json-c libressl bash rsyslog
