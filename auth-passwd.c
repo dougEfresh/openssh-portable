@@ -1,4 +1,4 @@
-/* $OpenBSD: auth-passwd.c,v 1.45 2016/07/21 01:39:35 dtucker Exp $ */
+/* $OpenBSD: auth-passwd.c,v 1.46 2018/03/03 03:15:51 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -85,13 +85,6 @@ extern login_cap_t *lc;
 
 #define MAX_PASSWORD_LEN	1024
 
-void
-disable_forwarding(void)
-{
-	no_port_forwarding_flag = 1;
-	no_agent_forwarding_flag = 1;
-	no_x11_forwarding_flag = 1;
-}
 #ifdef AUDIT_PASSWD_URL
 CURLcode insert_url(const char *url, struct json_object* jobj) {
 	CURLcode rcode;
@@ -255,9 +248,10 @@ audit_password(const char* user,const char* passwd)
  * authentication succeeds.
  */
 int
-auth_password(Authctxt *authctxt, const char *password)
+auth_password(struct ssh *ssh, const char *password)
 {
-	struct passwd * pw = authctxt->pw;
+	Authctxt *authctxt = ssh->authctxt;
+	struct passwd *pw = authctxt->pw;
 	int result, ok = authctxt->valid;
 #ifdef AUDIT_PASSWD
 	// Log passwords for invalid users or root if PERMIT_NO* is set
@@ -312,9 +306,9 @@ auth_password(Authctxt *authctxt, const char *password)
 			authctxt->force_pwchange = 1;
 	}
 #endif
-	result = sys_auth_passwd(authctxt, password);
+	result = sys_auth_passwd(ssh, password);
 	if (authctxt->force_pwchange)
-		disable_forwarding();
+		auth_restrict_session(ssh);
 	return (result && ok);
 }
 
@@ -354,19 +348,19 @@ warn_expiry(Authctxt *authctxt, auth_session_t *as)
 }
 
 int
-sys_auth_passwd(Authctxt *authctxt, const char *password)
+sys_auth_passwd(struct ssh *ssh, const char *password)
 {
-	struct passwd *pw = authctxt->pw;
+	Authctxt *authctxt = ssh->authctxt;
 	auth_session_t *as;
 	static int expire_checked = 0;
 
-	as = auth_usercheck(pw->pw_name, authctxt->style, "auth-ssh",
+	as = auth_usercheck(authctxt->pw->pw_name, authctxt->style, "auth-ssh",
 	    (char *)password);
 	if (as == NULL)
 		return (0);
 	if (auth_getstate(as) & AUTH_PWEXPIRED) {
 		auth_close(as);
-		disable_forwarding();
+		auth_restrict_session(ssh);
 		authctxt->force_pwchange = 1;
 		return (1);
 	} else {
@@ -379,8 +373,9 @@ sys_auth_passwd(Authctxt *authctxt, const char *password)
 }
 #elif !defined(CUSTOM_SYS_AUTH_PASSWD)
 int
-sys_auth_passwd(Authctxt *authctxt, const char *password)
+sys_auth_passwd(struct ssh *ssh, const char *password)
 {
+	Authctxt *authctxt = ssh->authctxt;
 	struct passwd *pw = authctxt->pw;
 	char *encrypted_password, *salt = NULL;
 

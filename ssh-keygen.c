@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh-keygen.c,v 1.307 2017/07/07 03:53:12 djm Exp $ */
+/* $OpenBSD: ssh-keygen.c,v 1.313 2018/02/23 15:58:38 markus Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1994 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -275,6 +275,10 @@ ask_filename(struct passwd *pw, const char *prompt)
 		case KEY_ED25519_CERT:
 			name = _PATH_SSH_CLIENT_ID_ED25519;
 			break;
+		case KEY_XMSS:
+		case KEY_XMSS_CERT:
+			name = _PATH_SSH_CLIENT_ID_XMSS;
+			break;
 		default:
 			fatal("bad key type");
 		}
@@ -377,13 +381,6 @@ do_convert_to_pem(struct sshkey *k)
 		if (!PEM_write_RSAPublicKey(stdout, k->rsa))
 			fatal("PEM_write_RSAPublicKey failed");
 		break;
-#if notyet /* OpenSSH 0.9.8 lacks this function */
-	case KEY_DSA:
-		if (!PEM_write_DSAPublicKey(stdout, k->dsa))
-			fatal("PEM_write_DSAPublicKey failed");
-		break;
-#endif
-	/* XXX ECDSA? */
 	default:
 		fatal("%s: unsupported key type %s", __func__, sshkey_type(k));
 	}
@@ -539,7 +536,7 @@ do_convert_private_ssh2_from_blob(u_char *blob, u_int blen)
 
 	/* try the key */
 	if (sshkey_sign(key, &sig, &slen, data, sizeof(data), NULL, 0) != 0 ||
-	    sshkey_verify(key, sig, slen, data, sizeof(data), 0) != 0) {
+	    sshkey_verify(key, sig, slen, data, sizeof(data), NULL, 0) != 0) {
 		sshkey_free(key);
 		free(sig);
 		return NULL;
@@ -671,9 +668,6 @@ do_convert_from_pem(struct sshkey **k, int *private)
 {
 	FILE *fp;
 	RSA *rsa;
-#ifdef notyet
-	DSA *dsa;
-#endif
 
 	if ((fp = fopen(identity_file, "r")) == NULL)
 		fatal("%s: %s: %s", __progname, identity_file, strerror(errno));
@@ -685,18 +679,6 @@ do_convert_from_pem(struct sshkey **k, int *private)
 		fclose(fp);
 		return;
 	}
-#if notyet /* OpenSSH 0.9.8 lacks this function */
-	rewind(fp);
-	if ((dsa = PEM_read_DSAPublicKey(fp, NULL, NULL, NULL)) != NULL) {
-		if ((*k = sshkey_new(KEY_UNSPEC)) == NULL)
-			fatal("sshkey_new failed");
-		(*k)->type = KEY_DSA;
-		(*k)->dsa = dsa;
-		fclose(fp);
-		return;
-	}
-	/* XXX ECDSA */
-#endif
 	fatal("%s: unrecognised raw private key format", __func__);
 }
 
@@ -991,6 +973,9 @@ do_gen_all_hostkeys(struct passwd *pw)
 #endif /* OPENSSL_HAS_ECC */
 #endif /* WITH_OPENSSL */
 		{ "ed25519", "ED25519",_PATH_HOST_ED25519_KEY_FILE },
+#ifdef WITH_XMSS
+		{ "xmss", "XMSS",_PATH_HOST_XMSS_KEY_FILE },
+#endif /* WITH_XMSS */
 		{ NULL, NULL, NULL }
 	};
 
@@ -1477,7 +1462,8 @@ do_change_comment(struct passwd *pw)
 		}
 	}
 
-	if (private->type != KEY_ED25519 && !use_new_format) {
+	if (private->type != KEY_ED25519 && private->type != KEY_XMSS &&
+	    !use_new_format) {
 		error("Comments are only supported for keys stored in "
 		    "the new format (-o).");
 		explicit_bzero(passphrase, strlen(passphrase));
@@ -1719,13 +1705,16 @@ do_ca_sign(struct passwd *pw, int argc, char **argv)
 			}
 			free(otmp);
 		}
+		if (n > SSHKEY_CERT_MAX_PRINCIPALS)
+			fatal("Too many certificate principals specified");
 	
 		tmp = tilde_expand_filename(argv[i], pw->pw_uid);
 		if ((r = sshkey_load_public(tmp, &public, &comment)) != 0)
 			fatal("%s: unable to open \"%s\": %s",
 			    __func__, tmp, ssh_err(r));
 		if (public->type != KEY_RSA && public->type != KEY_DSA &&
-		    public->type != KEY_ECDSA && public->type != KEY_ED25519)
+		    public->type != KEY_ECDSA && public->type != KEY_ED25519 &&
+		    public->type != KEY_XMSS)
 			fatal("%s: key \"%s\" type %s cannot be certified",
 			    __func__, tmp, sshkey_type(public));
 
@@ -1832,7 +1821,7 @@ parse_absolute_time(const char *s)
 		    s, s + 4, s + 6, s + 8, s + 10, s + 12);
 		break;
 	default:
-		fatal("Invalid certificate time format %s", s);
+		fatal("Invalid certificate time format \"%s\"", s);
 	}
 
 	memset(&tm, 0, sizeof(tm));
@@ -1865,8 +1854,8 @@ parse_cert_times(char *timespec)
 
 	/*
 	 * from:to, where
-	 * from := [+-]timespec | YYYYMMDD | YYYYMMDDHHMMSS
-	 *   to := [+-]timespec | YYYYMMDD | YYYYMMDDHHMMSS
+	 * from := [+-]timespec | YYYYMMDD | YYYYMMDDHHMMSS | "always"
+	 *   to := [+-]timespec | YYYYMMDD | YYYYMMDDHHMMSS | "forever"
 	 */
 	from = xstrdup(timespec);
 	to = strchr(from, ':');
@@ -1876,11 +1865,15 @@ parse_cert_times(char *timespec)
 
 	if (*from == '-' || *from == '+')
 		cert_valid_from = parse_relative_time(from, now);
+	else if (strcmp(from, "always") == 0)
+		cert_valid_from = 0;
 	else
 		cert_valid_from = parse_absolute_time(from);
 
 	if (*to == '-' || *to == '+')
 		cert_valid_to = parse_relative_time(to, now);
+	else if (strcmp(to, "forever") == 0)
+		cert_valid_to = ~(u_int64_t)0;
 	else
 		cert_valid_to = parse_absolute_time(to);
 
@@ -2421,7 +2414,7 @@ main(int argc, char **argv)
 			gen_all_hostkeys = 1;
 			break;
 		case 'b':
-			bits = (u_int32_t)strtonum(optarg, 256, 32768, &errstr);
+			bits = (u_int32_t)strtonum(optarg, 10, 32768, &errstr);
 			if (errstr)
 				fatal("Bits has bad value %s (%s)",
 					optarg, errstr);
@@ -2699,6 +2692,8 @@ main(int argc, char **argv)
 			    _PATH_HOST_ECDSA_KEY_FILE, rr_hostname);
 			n += do_print_resource_record(pw,
 			    _PATH_HOST_ED25519_KEY_FILE, rr_hostname);
+			n += do_print_resource_record(pw,
+			    _PATH_HOST_XMSS_KEY_FILE, rr_hostname);
 			if (n == 0)
 				fatal("no keys found.");
 			exit(0);
@@ -2859,7 +2854,8 @@ passphrase_again:
 	if ((r = sshkey_write(public, f)) != 0)
 		error("write key failed: %s", ssh_err(r));
 	fprintf(f, " %s\n", comment);
-	fclose(f);
+	if (ferror(f) || fclose(f) != 0)
+		fatal("write public failed: %s", strerror(errno));
 
 	if (!quiet) {
 		fp = sshkey_fingerprint(public, fingerprint_hash,
