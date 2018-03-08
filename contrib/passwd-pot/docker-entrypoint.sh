@@ -22,4 +22,8 @@ for i in /docker-entrypoint.d/* ; do
     [ -f "$i" ] && source "$i"
 done
 
-exec "$@" $SSHD_OPTS
+if [ "$1" == "/opt/ssh/sbin/sshd" ] ; then
+    exec "$@" $SSHD_OPTS
+else
+    exec "$@"
+fi
