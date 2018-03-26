@@ -819,6 +819,27 @@ main() { if (NSVersionOfRunTimeLibrary("System") >= (60 << 16))
 	    ])
 	AC_CHECK_HEADERS([linux/seccomp.h linux/filter.h linux/audit.h], [],
 	    [], [#include <linux/types.h>])
+	# Obtain MIPS ABI
+	case "$host" in
+	mips*)
+		AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#if _MIPS_SIM != _ABIO32
+#error
+#endif
+			]])],[mips_abi="o32"],[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#if _MIPS_SIM != _ABIN32
+#error
+#endif
+				]])],[mips_abi="n32"],[AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#if _MIPS_SIM != _ABI64
+#error
+#endif
+					]])],[mips_abi="n64"],[AC_MSG_ERROR([unknown MIPS ABI])
+				])
+			])
+		])
+		;;
+	esac
 	AC_MSG_CHECKING([for seccomp architecture])
 	seccomp_audit_arch=
 	case "$host" in
@@ -853,10 +874,24 @@ main() { if (NSVersionOfRunTimeLibrary("System") >= (60 << 16))
 		seccomp_audit_arch=AUDIT_ARCH_MIPSEL
 		;;
 	mips64-*)
-		seccomp_audit_arch=AUDIT_ARCH_MIPS64
+		case "$mips_abi" in
+		"n32")
+			seccomp_audit_arch=AUDIT_ARCH_MIPS64N32
+			;;
+		"n64")
+			seccomp_audit_arch=AUDIT_ARCH_MIPS64
+			;;
+		esac
 		;;
 	mips64el-*)
-		seccomp_audit_arch=AUDIT_ARCH_MIPSEL64
+		case "$mips_abi" in
+		"n32")
+			seccomp_audit_arch=AUDIT_ARCH_MIPSEL64N32
+			;;
+		"n64")
+			seccomp_audit_arch=AUDIT_ARCH_MIPSEL64
+			;;
+		esac
 		;;
 	esac
 	if test "x$seccomp_audit_arch" != "x" ; then
@@ -1007,6 +1042,7 @@ mips-sony-bsd|mips-sony-newsos4)
 	conf_wtmp_location=/var/adm/wtmp
 	conf_lastlog_location=/var/adm/lastlog
 	AC_DEFINE([USE_PIPES])
+	AC_DEFINE([DISABLE_UTMPX], [1], [no utmpx])
 	;;
 *-ncr-sysv*)
 	LIBS="$LIBS -lc89"
@@ -1055,20 +1091,16 @@ mips-sony-bsd|mips-sony-newsos4)
 	AC_DEFINE([PASSWD_NEEDS_USERNAME])
 	AC_DEFINE([BROKEN_TCGETATTR_ICANON])
 	TEST_SHELL=$SHELL	# let configure find us a capable shell
+	check_for_libcrypt_later=1
 	case "$host" in
 	*-*-sysv5SCO_SV*)	# SCO OpenServer 6.x
 		maildir=/var/spool/mail
-		AC_DEFINE([BROKEN_LIBIAF], [1],
-			[ia_uinfo routines not supported by OS yet])
 		AC_DEFINE([BROKEN_UPDWTMPX])
 		AC_CHECK_LIB([prot], [getluid], [ LIBS="$LIBS -lprot"
 			AC_CHECK_FUNCS([getluid setluid], , , [-lprot])
-			AC_DEFINE([HAVE_SECUREWARE])
-			AC_DEFINE([DISABLE_SHADOW])
 			], , )
 		;;
 	*)	AC_DEFINE([LOCKED_PASSWD_STRING], ["*LK*"])
-		check_for_libcrypt_later=1
 		;;
 	esac
 	;;
@@ -2058,6 +2090,16 @@ AC_CHECK_FUNCS([realpath], [
 		[AC_MSG_WARN([cross compiling: assuming working])]
 	)
 ])
+
+AC_MSG_CHECKING([for working fflush(NULL)])
+AC_RUN_IFELSE(
+	[AC_LANG_PROGRAM([[#include <stdio.h>]], [[fflush(NULL); exit(0);]])],
+	AC_MSG_RESULT([yes]),
+	[AC_MSG_RESULT([no])
+	 AC_DEFINE([FFLUSH_NULL_BUG], [1],
+	    [define if fflush(NULL) does not work])],
+	AC_MSG_WARN([cross compiling: assuming working])
+)
 
 dnl    Checks for time functions
 AC_CHECK_FUNCS([gettimeofday time])
