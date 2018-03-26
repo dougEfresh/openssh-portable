@@ -1,7 +1,7 @@
 from alpine:3.7
 
 MAINTAINER Doug Chimento <dchimento@gmail.com>
-RUN apk add --no-cache curl zlib json-c libressl bash rsyslog
+RUN apk add --no-cache curl zlib json-c libressl bash rsyslog openrc
 
 RUN mkdir -p /var/empty /opt/ssh
 RUN touch /var/log/btmp

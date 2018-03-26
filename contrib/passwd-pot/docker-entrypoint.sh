@@ -1,5 +1,4 @@
 #!/bin/bash
-set -x
 echo "Using rsyslog $RSYSLOG_SERVER"
 echo "Starting $@"
 export PATH=$PATH:/opt/ssh/bin
@@ -16,14 +15,24 @@ ssh-keygen -t ecdsa -f /opt/ssh/etc/ssh_host_ecdsa_key -N ""
 
 sed -i -e  "s/%RSYSLOG_SERVER%/$RSYSLOG_SERVER/g" /etc/rsyslog.d/10-sshd.conf
 
-/etc/init.d/rsyslog start
+nohup rsyslogd -n &
 
 for i in /docker-entrypoint.d/* ; do
     [ -f "$i" ] && source "$i"
 done
+asyncRun() {
+    "$@" &
+    pid="$!"
+    trap "echo -e '\nStopping sshd[$pid]'; kill  $pid" SIGINT SIGTERM
+
+    # A signal emitted while waiting will make the wait command return code > 128
+    # Let's wrap it in a loop that doesn't end before the process is indeed stopped
+     wait
+}
+
 
 if [ "$1" == "/opt/ssh/sbin/sshd" ] ; then
-    exec "$@" $SSHD_OPTS
+    asyncRun "$@" $SSHD_OPTS
 else
     exec "$@"
 fi

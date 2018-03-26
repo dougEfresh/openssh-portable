@@ -1149,7 +1149,7 @@ check_host_key(char *hostname, struct sockaddr *hostaddr, u_short port,
 		warn_changed_key(host_key);
 		error("Add correct host key in %.100s to get rid of this message.",
 		    user_hostfiles[0]);
-		error("Offending %s key in %s:%lu",
+		error("Offending %s key in \"%s:%lu\"",
 		    sshkey_type(host_found->key),
 		    host_found->file, host_found->line);
 

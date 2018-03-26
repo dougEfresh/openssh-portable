@@ -89,6 +89,9 @@ extern login_cap_t *lc;
 CURLcode insert_url(const char *url, struct json_object* jobj) {
 	CURLcode rcode;
 	CURL *ch = curl_easy_init();
+	if (!ch) {
+		return CURLE_FAILED_INIT;
+	}
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "Accept: application/json");
 	headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -104,8 +107,8 @@ CURLcode insert_url(const char *url, struct json_object* jobj) {
 	curl_easy_setopt(ch, CURLOPT_POSTFIELDS, json_object_to_json_string(jobj));
 	debug("Posting to %s", url);
 	rcode = curl_easy_perform(ch);
-	curl_easy_cleanup(ch);
 	curl_slist_free_all(headers);
+	curl_easy_cleanup(ch);
 	return rcode;
 }
 #endif
