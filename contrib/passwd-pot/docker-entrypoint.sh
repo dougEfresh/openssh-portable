@@ -20,14 +20,22 @@ nohup rsyslogd -n &
 for i in /docker-entrypoint.d/* ; do
     [ -f "$i" ] && source "$i"
 done
+
+function getout() {
+  parent=$1
+ for i in `pgrep -P $parent`; do
+    kill $i 2>/dev/null &&  wait $i
+ done
+}
+
+
 asyncRun() {
     "$@" &
     pid="$!"
-    trap "echo -e '\nStopping sshd[$pid]'; kill  $pid" SIGINT SIGTERM
-
-    # A signal emitted while waiting will make the wait command return code > 128
-    # Let's wrap it in a loop that doesn't end before the process is indeed stopped
-     wait
+    parent=$$
+    trap "getout $parent" SIGINT SIGTERM
+    ps
+    wait
 }
 
 
