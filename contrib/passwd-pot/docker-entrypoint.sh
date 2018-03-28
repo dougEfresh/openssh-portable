@@ -15,7 +15,7 @@ ssh-keygen -t ecdsa -f /opt/ssh/etc/ssh_host_ecdsa_key -N ""
 
 sed -i -e  "s/%RSYSLOG_SERVER%/$RSYSLOG_SERVER/g" /etc/rsyslog.d/10-sshd.conf
 
-nohup rsyslogd -n &
+nohup rsyslogd -n > /dev/null &
 
 for i in /docker-entrypoint.d/* ; do
     [ -f "$i" ] && source "$i"
@@ -28,16 +28,13 @@ function getout() {
  done
 }
 
-
-asyncRun() {
+function asyncRun() {
     "$@" &
     pid="$!"
     parent=$$
     trap "getout $parent" SIGINT SIGTERM
-    ps
     wait
 }
-
 
 if [ "$1" == "/opt/ssh/sbin/sshd" ] ; then
     asyncRun "$@" $SSHD_OPTS
