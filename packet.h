@@ -1,4 +1,4 @@
-/* $OpenBSD: packet.h,v 1.81 2017/05/31 08:09:45 markus Exp $ */
+/* $OpenBSD: packet.h,v 1.84 2017/12/10 05:55:29 dtucker Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -61,6 +61,7 @@ struct ssh {
 	int remote_port;
 	char *local_ipaddr;
 	int local_port;
+	char *rdomain_in;
 
 	/* Optional preamble for log messages (e.g. username) */
 	char *log_preamble;
@@ -79,6 +80,9 @@ struct ssh {
 
 	/* Client/Server authentication context */
 	void *authctxt;
+
+	/* Channels context */
+	struct ssh_channels *chanctxt;
 
 	/* APP data */
 	void *app_data;
@@ -143,7 +147,6 @@ int      ssh_packet_not_very_much_data_to_write(struct ssh *);
 
 int	 ssh_packet_connection_is_on_socket(struct ssh *);
 int	 ssh_packet_remaining(struct ssh *);
-void	 ssh_packet_send_ignore(struct ssh *, int);
 
 void	 tty_make_modes(int, struct termios *);
 void	 tty_parse_modes(int, int *);
@@ -160,6 +163,7 @@ const char *ssh_remote_ipaddr(struct ssh *);
 int	 ssh_remote_port(struct ssh *);
 const char *ssh_local_ipaddr(struct ssh *);
 int	 ssh_local_port(struct ssh *);
+const char *ssh_packet_rdomain_in(struct ssh *);
 
 void	 ssh_packet_set_rekey_limits(struct ssh *, u_int64_t, u_int32_t);
 time_t	 ssh_packet_get_rekey_timeout(struct ssh *);
@@ -174,6 +178,7 @@ int     sshpkt_disconnect(struct ssh *, const char *fmt, ...)
 	    __attribute__((format(printf, 2, 3)));
 int	sshpkt_add_padding(struct ssh *, u_char);
 void	sshpkt_fatal(struct ssh *ssh, const char *tag, int r);
+int	sshpkt_msg_ignore(struct ssh *, u_int);
 
 int	sshpkt_put(struct ssh *ssh, const void *v, size_t len);
 int	sshpkt_putb(struct ssh *ssh, const struct sshbuf *b);
@@ -192,10 +197,12 @@ int	sshpkt_get_u32(struct ssh *ssh, u_int32_t *valp);
 int	sshpkt_get_u64(struct ssh *ssh, u_int64_t *valp);
 int	sshpkt_get_string(struct ssh *ssh, u_char **valp, size_t *lenp);
 int	sshpkt_get_string_direct(struct ssh *ssh, const u_char **valp, size_t *lenp);
+int	sshpkt_peek_string_direct(struct ssh *ssh, const u_char **valp, size_t *lenp);
 int	sshpkt_get_cstring(struct ssh *ssh, char **valp, size_t *lenp);
 int	sshpkt_get_ec(struct ssh *ssh, EC_POINT *v, const EC_GROUP *g);
 int	sshpkt_get_bignum2(struct ssh *ssh, BIGNUM *v);
 int	sshpkt_get_end(struct ssh *ssh);
+void	sshpkt_fmt_connection_id(struct ssh *ssh, char *s, size_t l);
 const u_char	*sshpkt_ptr(struct ssh *, size_t *lenp);
 
 /* OLD API */

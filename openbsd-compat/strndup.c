@@ -1,5 +1,7 @@
+/*	$OpenBSD: strndup.c,v 1.2 2015/08/31 02:53:57 guenther Exp $	*/
+
 /*
- * Copyright (c) 2005 Reyk Floeter <reyk@openbsd.org>
+ * Copyright (c) 2010 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -14,20 +16,28 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef _PORT_TUN_H
-#define _PORT_TUN_H
+#include "config.h"
+#ifndef HAVE_STRNDUP
+#include <sys/types.h>
 
-struct Channel;
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
-#if defined(SSH_TUN_LINUX) || defined(SSH_TUN_FREEBSD)
-# define CUSTOM_SYS_TUN_OPEN
-int	  sys_tun_open(int, int);
-#endif
+char *
+strndup(const char *str, size_t maxlen)
+{
+	char *copy;
+	size_t len;
 
-#if defined(SSH_TUN_COMPAT_AF) || defined(SSH_TUN_PREPEND_AF)
-# define SSH_TUN_FILTER
-int	 sys_tun_infilter(struct Channel *, char *, int);
-u_char	*sys_tun_outfilter(struct Channel *, u_char **, u_int *);
-#endif
+	len = strnlen(str, maxlen);
+	copy = malloc(len + 1);
+	if (copy != NULL) {
+		(void)memcpy(copy, str, len);
+		copy[len] = '\0';
+	}
 
-#endif
+	return copy;
+}
+DEF_WEAK(strndup);
+#endif  /* HAVE_STRNDUP */

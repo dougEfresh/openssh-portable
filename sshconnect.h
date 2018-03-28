@@ -1,4 +1,4 @@
-/* $OpenBSD: sshconnect.h,v 1.30 2017/05/30 08:52:19 markus Exp $ */
+/* $OpenBSD: sshconnect.h,v 1.32 2018/02/10 09:25:35 djm Exp $ */
 
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
@@ -32,8 +32,10 @@ struct Sensitive {
 };
 
 struct addrinfo;
-int	 ssh_connect(const char *, struct addrinfo *, struct sockaddr_storage *,
-    u_short, int, int, int *, int, int);
+struct ssh;
+
+int	 ssh_connect(struct ssh *, const char *, struct addrinfo *,
+	    struct sockaddr_storage *, u_short, int, int, int *, int, int);
 void	 ssh_kill_proxy_command(void);
 
 void	 ssh_login(Sensitive *, const char *, struct sockaddr *, u_short,
@@ -55,7 +57,7 @@ void	 ssh_userauth2(const char *, const char *, char *, Sensitive *);
 void	 ssh_put_password(char *);
 int	 ssh_local_cmd(const char *);
 
-void	 maybe_add_key_to_agent(char *, struct sshkey *, char *, char *);
+void	 maybe_add_key_to_agent(char *, const struct sshkey *, char *, char *);
 
 /*
  * Macros to raise/lower permissions.

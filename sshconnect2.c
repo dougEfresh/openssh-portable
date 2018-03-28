@@ -1,4 +1,4 @@
-/* $OpenBSD: sshconnect2.c,v 1.264 2017/06/14 00:31:38 dtucker Exp $ */
+/* $OpenBSD: sshconnect2.c,v 1.270 2018/03/24 19:28:43 markus Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  * Copyright (c) 2008 Damien Miller.  All rights reserved.
@@ -578,7 +578,6 @@ input_userauth_pk_ok(int type, u_int32_t seq, struct ssh *ssh)
 	Authctxt *authctxt = ssh->authctxt;
 	struct sshkey *key = NULL;
 	Identity *id = NULL;
-	Buffer b;
 	int pktype, sent = 0;
 	u_int alen, blen;
 	char *pkalg, *fp;
@@ -586,18 +585,9 @@ input_userauth_pk_ok(int type, u_int32_t seq, struct ssh *ssh)
 
 	if (authctxt == NULL)
 		fatal("input_userauth_pk_ok: no authentication context");
-	if (datafellows & SSH_BUG_PKOK) {
-		/* this is similar to SSH_BUG_PKAUTH */
-		debug2("input_userauth_pk_ok: SSH_BUG_PKOK");
-		pkblob = packet_get_string(&blen);
-		buffer_init(&b);
-		buffer_append(&b, pkblob, blen);
-		pkalg = buffer_get_string(&b, &alen);
-		buffer_free(&b);
-	} else {
-		pkalg = packet_get_string(&alen);
-		pkblob = packet_get_string(&blen);
-	}
+
+	pkalg = packet_get_string(&alen);
+	pkblob = packet_get_string(&blen);
 	packet_check_eom();
 
 	debug("Server accepts key: pkalg %s blen %u", pkalg, blen);
@@ -634,8 +624,7 @@ input_userauth_pk_ok(int type, u_int32_t seq, struct ssh *ssh)
 		}
 	}
 done:
-	if (key != NULL)
-		key_free(key);
+	key_free(key);
 	free(pkalg);
 	free(pkblob);
 
@@ -895,7 +884,7 @@ int
 userauth_passwd(Authctxt *authctxt)
 {
 	static int attempt = 0;
-	char prompt[150];
+	char prompt[256];
 	char *password;
 	const char *host = options.host_key_alias ?  options.host_key_alias :
 	    authctxt->host;
@@ -935,7 +924,7 @@ input_userauth_passwd_changereq(int type, u_int32_t seqnr, struct ssh *ssh)
 {
 	Authctxt *authctxt = ssh->authctxt;
 	char *info, *lang, *password = NULL, *retype = NULL;
-	char prompt[150];
+	char prompt[256];
 	const char *host;
 
 	debug2("input_userauth_passwd_changereq");
@@ -1013,17 +1002,46 @@ key_sign_encode(const struct sshkey *key)
 	return key_ssh_name(key);
 }
 
+/*
+ * Some agents will return ssh-rsa signatures when asked to make a
+ * rsa-sha2-* signature. Check what they actually gave back and warn the
+ * user if the agent has returned an unexpected type.
+ */
+static int
+check_sigtype(const struct sshkey *key, const u_char *sig, size_t len)
+{
+	int r;
+	char *sigtype = NULL;
+	const char *alg = key_sign_encode(key);
+
+	if (sshkey_is_cert(key))
+		return 0;
+	if ((r = sshkey_sigtype(sig, len, &sigtype)) != 0)
+		return r;
+	if (strcmp(sigtype, alg) != 0) {
+		logit("warning: agent returned different signature type %s "
+		    "(expected %s)", sigtype, alg);
+	}
+	free(sigtype);
+	/* Incorrect signature types aren't an error ... yet */
+	return 0;
+}
+
 static int
 identity_sign(struct identity *id, u_char **sigp, size_t *lenp,
     const u_char *data, size_t datalen, u_int compat)
 {
 	struct sshkey *prv;
-	int ret;
+	int r;
 
 	/* the agent supports this key */
-	if (id->key != NULL && id->agent_fd != -1)
-		return ssh_agent_sign(id->agent_fd, id->key, sigp, lenp,
-		    data, datalen, key_sign_encode(id->key), compat);
+	if (id->key != NULL && id->agent_fd != -1) {
+		if ((r = ssh_agent_sign(id->agent_fd, id->key, sigp, lenp,
+		    data, datalen, key_sign_encode(id->key), compat)) != 0 ||
+		    (r = check_sigtype(id->key, *sigp, *lenp)) != 0)
+			return r;
+		return 0;
+	}
 
 	/*
 	 * we have already loaded the private key or
@@ -1037,10 +1055,15 @@ identity_sign(struct identity *id, u_char **sigp, size_t *lenp,
 	/* load the private key from the file */
 	if ((prv = load_identity_file(id)) == NULL)
 		return SSH_ERR_KEY_NOT_FOUND;
-	ret = sshkey_sign(prv, sigp, lenp, data, datalen,
+	if (id->key != NULL && !sshkey_equal_public(prv, id->key)) {
+		error("%s: private key %s contents do not match public",
+		   __func__, id->filename);
+		return SSH_ERR_KEY_NOT_FOUND;
+	}
+	r = sshkey_sign(prv, sigp, lenp, data, datalen,
 	    key_sign_encode(prv), compat);
 	sshkey_free(prv);
-	return (ret);
+	return r;
 }
 
 static int
@@ -1095,17 +1118,10 @@ sign_and_send_pubkey(Authctxt *authctxt, Identity *id)
 	}
 	buffer_put_char(&b, SSH2_MSG_USERAUTH_REQUEST);
 	buffer_put_cstring(&b, authctxt->server_user);
-	buffer_put_cstring(&b,
-	    datafellows & SSH_BUG_PKSERVICE ?
-	    "ssh-userauth" :
-	    authctxt->service);
-	if (datafellows & SSH_BUG_PKAUTH) {
-		buffer_put_char(&b, have_sig);
-	} else {
-		buffer_put_cstring(&b, authctxt->method->name);
-		buffer_put_char(&b, have_sig);
-		buffer_put_cstring(&b, key_sign_encode(id->key));
-	}
+	buffer_put_cstring(&b, authctxt->service);
+	buffer_put_cstring(&b, authctxt->method->name);
+	buffer_put_char(&b, have_sig);
+	buffer_put_cstring(&b, key_sign_encode(id->key));
 	buffer_put_string(&b, blob, bloblen);
 
 	/*
@@ -1165,19 +1181,6 @@ sign_and_send_pubkey(Authctxt *authctxt, Identity *id)
 #ifdef DEBUG_PK
 	buffer_dump(&b);
 #endif
-	if (datafellows & SSH_BUG_PKSERVICE) {
-		buffer_clear(&b);
-		buffer_append(&b, session_id2, session_id2_len);
-		skip = session_id2_len;
-		buffer_put_char(&b, SSH2_MSG_USERAUTH_REQUEST);
-		buffer_put_cstring(&b, authctxt->server_user);
-		buffer_put_cstring(&b, authctxt->service);
-		buffer_put_cstring(&b, authctxt->method->name);
-		buffer_put_char(&b, have_sig);
-		if (!(datafellows & SSH_BUG_PKAUTH))
-			buffer_put_cstring(&b, key_ssh_name(id->key));
-		buffer_put_string(&b, blob, bloblen);
-	}
 	free(blob);
 
 	/* append signature */
@@ -1219,8 +1222,7 @@ send_pubkey_test(Authctxt *authctxt, Identity *id)
 	packet_put_cstring(authctxt->service);
 	packet_put_cstring(authctxt->method->name);
 	packet_put_char(have_sig);
-	if (!(datafellows & SSH_BUG_PKAUTH))
-		packet_put_cstring(key_sign_encode(id->key));
+	packet_put_cstring(key_sign_encode(id->key));
 	packet_put_string(blob, bloblen);
 	free(blob);
 	packet_send();
@@ -1736,7 +1738,6 @@ userauth_hostbased(Authctxt *authctxt)
 	struct ssh *ssh = active_state;
 	struct sshkey *private = NULL;
 	struct sshbuf *b = NULL;
-	const char *service;
 	u_char *sig = NULL, *keyblob = NULL;
 	char *fp = NULL, *chost = NULL, *lname = NULL;
 	size_t siglen = 0, keylen = 0;
@@ -1807,9 +1808,6 @@ userauth_hostbased(Authctxt *authctxt)
 	xasprintf(&chost, "%s.", lname);
 	debug2("%s: chost %s", __func__, chost);
 
-	service = datafellows & SSH_BUG_HBSERVICE ? "ssh-userauth" :
-	    authctxt->service;
-
 	/* construct data */
 	if ((b = sshbuf_new()) == NULL) {
 		error("%s: sshbuf_new failed", __func__);
@@ -1822,7 +1820,7 @@ userauth_hostbased(Authctxt *authctxt)
 	if ((r = sshbuf_put_string(b, session_id2, session_id2_len)) != 0 ||
 	    (r = sshbuf_put_u8(b, SSH2_MSG_USERAUTH_REQUEST)) != 0 ||
 	    (r = sshbuf_put_cstring(b, authctxt->server_user)) != 0 ||
-	    (r = sshbuf_put_cstring(b, service)) != 0 ||
+	    (r = sshbuf_put_cstring(b, authctxt->service)) != 0 ||
 	    (r = sshbuf_put_cstring(b, authctxt->method->name)) != 0 ||
 	    (r = sshbuf_put_cstring(b, key_ssh_name(private))) != 0 ||
 	    (r = sshbuf_put_string(b, keyblob, keylen)) != 0 ||

@@ -1,4 +1,4 @@
-/* $OpenBSD: readconf.h,v 1.122 2017/05/30 18:58:37 bluhm Exp $ */
+/* $OpenBSD: readconf.h,v 1.125 2018/02/23 02:34:33 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -81,6 +81,7 @@ typedef struct {
 	char   *user_hostfiles[SSH_MAX_HOSTS_FILES];
 	char   *preferred_authentications;
 	char   *bind_address;	/* local socket address for connection to sshd */
+	char   *bind_interface;	/* local interface for bind address */
 	char   *pkcs11_provider; /* PKCS#11 provider */
 	int	verify_host_key_dns;	/* Verify host key using DNS */
 
@@ -190,6 +191,11 @@ typedef struct {
 #define SSH_UPDATE_HOSTKEYS_YES	1
 #define SSH_UPDATE_HOSTKEYS_ASK	2
 
+#define SSH_STRICT_HOSTKEY_OFF	0
+#define SSH_STRICT_HOSTKEY_NEW	1
+#define SSH_STRICT_HOSTKEY_YES	2
+#define SSH_STRICT_HOSTKEY_ASK	3
+
 void     initialize_options(Options *);
 void     fill_default_options(Options *);
 void	 fill_default_options_for_canonicalization(Options *);
@@ -199,6 +205,7 @@ int	 read_config_file(const char *, struct passwd *, const char *,
     const char *, Options *, int);
 int	 parse_forward(struct Forward *, const char *, int, int);
 int	 parse_jump(const char *, Options *, int);
+int	 parse_ssh_uri(const char *, char **, char **, int *);
 int	 default_ssh_port(void);
 int	 option_clear_or_none(const char *);
 void	 dump_client_config(Options *o, const char *host);

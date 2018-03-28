@@ -1,4 +1,4 @@
-/* $OpenBSD: auth2-hostbased.c,v 1.30 2017/05/30 14:29:59 markus Exp $ */
+/* $OpenBSD: auth2-hostbased.c,v 1.33 2018/01/23 05:27:21 djm Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  *
@@ -62,7 +62,7 @@ userauth_hostbased(struct ssh *ssh)
 	Authctxt *authctxt = ssh->authctxt;
 	struct sshbuf *b;
 	struct sshkey *key = NULL;
-	char *pkalg, *cuser, *chost, *service;
+	char *pkalg, *cuser, *chost;
 	u_char *pkblob, *sig;
 	size_t alen, blen, slen;
 	int r, pktype, authenticated = 0;
@@ -118,15 +118,13 @@ userauth_hostbased(struct ssh *ssh)
 		goto done;
 	}
 
-	service = ssh->compat & SSH_BUG_HBSERVICE ? "ssh-userauth" :
-	    authctxt->service;
 	if ((b = sshbuf_new()) == NULL)
 		fatal("%s: sshbuf_new failed", __func__);
 	/* reconstruct packet */
 	if ((r = sshbuf_put_string(b, session_id2, session_id2_len)) != 0 ||
 	    (r = sshbuf_put_u8(b, SSH2_MSG_USERAUTH_REQUEST)) != 0 ||
 	    (r = sshbuf_put_cstring(b, authctxt->user)) != 0 ||
-	    (r = sshbuf_put_cstring(b, service)) != 0 ||
+	    (r = sshbuf_put_cstring(b, authctxt->service)) != 0 ||
 	    (r = sshbuf_put_cstring(b, "hostbased")) != 0 ||
 	    (r = sshbuf_put_string(b, pkalg, alen)) != 0 ||
 	    (r = sshbuf_put_string(b, pkblob, blen)) != 0 ||
@@ -137,21 +135,21 @@ userauth_hostbased(struct ssh *ssh)
 	sshbuf_dump(b, stderr);
 #endif
 
-	pubkey_auth_info(authctxt, key,
+	auth2_record_info(authctxt,
 	    "client user \"%.100s\", client host \"%.100s\"", cuser, chost);
 
 	/* test for allowed key and correct signature */
 	authenticated = 0;
 	if (PRIVSEP(hostbased_key_allowed(authctxt->pw, cuser, chost, key)) &&
 	    PRIVSEP(sshkey_verify(key, sig, slen,
-	    sshbuf_ptr(b), sshbuf_len(b), ssh->compat)) == 0)
+	    sshbuf_ptr(b), sshbuf_len(b), pkalg, ssh->compat)) == 0)
 		authenticated = 1;
 
+	auth2_record_key(authctxt, authenticated, key);
 	sshbuf_free(b);
 done:
 	debug2("%s: authenticated %d", __func__, authenticated);
-	if (key != NULL)
-		sshkey_free(key);
+	sshkey_free(key);
 	free(pkalg);
 	free(pkblob);
 	free(cuser);
