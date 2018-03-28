@@ -20,3 +20,4 @@ after_success:
 - docker tag $REPO:$COMMIT $REPO:$COMMIT
 - docker push $REPO:$COMMIT
 - docker tag $REPO:$COMMIT $REPO:latest
+- docker push $REPO:latest
