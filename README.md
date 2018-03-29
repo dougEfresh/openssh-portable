@@ -1,6 +1,6 @@
 # OpenSSH Honey pot
 
-Patched OpenSSH server captures passwords and stores them or sends them to a REST api
+Patched OpenSSH that logs passwords or sends them to a REST api
 
 [![Build Status][ci-img]][ci]
 
@@ -8,7 +8,7 @@ Patched OpenSSH server captures passwords and stores them or sends them to a RES
 ## Quick Start
 
 ```shell
-$ docker run -t -i -p 2222:2222 dougefresh/sshd-passwd-pot /opt/ssh/sbin/sshd -d
+$ docker run -t -i -p 2222:2222 dougefresh/sshd-passwd-pot sshd -d
 $ ssh -l hacker -p 2222 localhost
 ```
 
@@ -39,7 +39,73 @@ $ docker build . -t sshd-passwdpot
 
 `SSHD_OPTS`
 
-You can pass any valid OpenSSH options https://man.openbsd.org/sshd
+You can pass any valid OpenSSH [options](https://man.openbsd.org/sshd)
+
+```shell
+docker run  -e SSHD_OPTS="-o Audit=no" -t -i -p 2222:2222 dougefresh/sshd-passwd-pot
+```
+
+`RSYSLOG_SERVER`
+
+The container is running rsyslogd and will forward messages to `172.17.0.1` by default
+
+You can enable your host's rsyslog to accept messages with 
+
+```
+module(load="imtcp")
+input(type="imtcp" port="514" address="172.17.0.1")'
+``` 
+
+```shell
+echo -e 'module(load="imtcp")\ninput(type="imtcp" port="514" address="172.17.0.1")' > /etc/rsyslog.d/99_listen.conf
+```
+
+
+## Default config
+
+```
+AddressFamily any
+AllowAgentForwarding no
+AllowTcpForwarding no
+Audit yes
+AuthorizedKeysFile	.ssh/authorized_keys
+ListenAddress 0.0.0.0
+LogLevel INFO
+MaxAuthTries 50
+MaxSessions 0
+PermitEmptyPasswords no
+PermitRootLogin no
+PermitTTY no
+PermitUserEnvironment no
+Port 2222
+PrintMotd no
+StrictModes no
+SyslogFacility local7
+TCPKeepAlive no
+UseDNS yes
+X11Forwarding no
+X11UseLocalhost no
+```
+
+### Custom config
+
+```
+Audit [yes|no]
+```
+
+Audit yes will log username/password to  syslog
+
+```
+AuditUrl http://localhost
+```
+
+AuditUrl will POST json to url
+
+```
+AuditSocket /var/run/passwd.socket
+```
+
+AuditSocket will POST json to this socket file. AuditUrl must be specified 
 
 
 ## Examples
@@ -53,9 +119,7 @@ You can pass any valid OpenSSH options https://man.openbsd.org/sshd
 
 ## Authors
 
-* **Douglas Chimento**  - [dougEfresh][me]
-
-
+* **Douglas Chimento**  - [dougEfresh](https://github.com/dougEfresh)
 
 
 [ci-img]: https://travis-ci.org/dougEfresh/lambdazap.svg?branch=master

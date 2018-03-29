@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "Using rsyslog $RSYSLOG_SERVER"
 echo "Starting $@"
-export PATH=$PATH:/opt/ssh/bin
+export PATH=$PATH:/opt/ssh/bin:/opt/ssh/sbin
 
 rm -f /opt/ssh/etc/ssh_host_dsa_key
 rm -f /opt/ssh/etc/ssh_host_rsa_key 
