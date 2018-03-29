@@ -89,24 +89,23 @@ X11UseLocalhost no
 
 ### Custom config
 
-```
-Audit [yes|no]
-```
-
 Audit yes will log username/password to  syslog
 
 ```
-AuditUrl http://localhost
+Audit [yes|no]
 ```
 
 AuditUrl will POST json to url
 
 ```
-AuditSocket /var/run/passwd.socket
+AuditUrl http://localhost
 ```
 
-AuditSocket will POST json to this socket file. AuditUrl must be specified 
+AuditSocket will POST json to this socket file. AuditUrl must be specified
 
+```
+AuditSocket /var/run/passwd.socket
+```
 
 ## Examples
     
@@ -122,5 +121,5 @@ AuditSocket will POST json to this socket file. AuditUrl must be specified
 * **Douglas Chimento**  - [dougEfresh](https://github.com/dougEfresh)
 
 
-[ci-img]: https://travis-ci.org/dougEfresh/lambdazap.svg?branch=master
-[ci]: https://travis-ci.org/dougEfresh/lambdazap
+[ci-img]: https://travis-ci.org/dougEfresh/sshd-passwd-pot.svg?branch=master
+[ci]: https://travis-ci.org/dougEfresh/sshd-passwd-pot
