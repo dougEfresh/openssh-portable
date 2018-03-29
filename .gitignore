@@ -27,3 +27,5 @@ ssh-pkcs11-helper
 sshd
 build/
 !regress/misc/fuzz-harness/Makefile
+.vscode/
+.idea/
