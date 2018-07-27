@@ -1,4 +1,4 @@
-/* $OpenBSD: auth2-pubkey.c,v 1.77 2018/03/03 03:15:51 djm Exp $ */
+/* $OpenBSD: auth2-pubkey.c,v 1.82 2018/07/11 18:55:11 markus Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  *
@@ -46,7 +46,7 @@
 #include "ssh.h"
 #include "ssh2.h"
 #include "packet.h"
-#include "buffer.h"
+#include "sshbuf.h"
 #include "log.h"
 #include "misc.h"
 #include "servconf.h"
@@ -109,7 +109,7 @@ userauth_pubkey(struct ssh *ssh)
 	pktype = sshkey_type_from_name(pkalg);
 	if (pktype == KEY_UNSPEC) {
 		/* this is perfectly legal */
-		logit("%s: unsupported public key algorithm: %s",
+		verbose("%s: unsupported public key algorithm: %s",
 		    __func__, pkalg);
 		goto done;
 	}
@@ -136,8 +136,7 @@ userauth_pubkey(struct ssh *ssh)
 		logit("refusing previously-used %s key", sshkey_type(key));
 		goto done;
 	}
-	if (match_pattern_list(sshkey_ssh_name(key),
-	    options.pubkey_key_types, 0) != 1) {
+	if (match_pattern_list(pkalg, options.pubkey_key_types, 0) != 1) {
 		logit("%s: key type %s not in PubkeyAcceptedKeyTypes",
 		    __func__, sshkey_ssh_name(key));
 		goto done;
@@ -188,8 +187,10 @@ userauth_pubkey(struct ssh *ssh)
 		/* test for correct signature */
 		authenticated = 0;
 		if (PRIVSEP(user_key_allowed(ssh, pw, key, 1, &authopts)) &&
-		    PRIVSEP(sshkey_verify(key, sig, slen, sshbuf_ptr(b),
-		    sshbuf_len(b), NULL, ssh->compat)) == 0) {
+		    PRIVSEP(sshkey_verify(key, sig, slen,
+		    sshbuf_ptr(b), sshbuf_len(b),
+		    (ssh->compat & SSH_BUG_SIGTYPE) == 0 ? pkalg : NULL,
+		    ssh->compat)) == 0) {
 			authenticated = 1;
 		}
 		sshbuf_free(b);
@@ -217,9 +218,9 @@ userauth_pubkey(struct ssh *ssh)
 			    != 0 ||
 			    (r = sshpkt_put_cstring(ssh, pkalg)) != 0 ||
 			    (r = sshpkt_put_string(ssh, pkblob, blen)) != 0 ||
-			    (r = sshpkt_send(ssh)) != 0)
+			    (r = sshpkt_send(ssh)) != 0 ||
+			    (r = ssh_packet_write_wait(ssh)) != 0)
 				fatal("%s: %s", __func__, ssh_err(r));
-			ssh_packet_write_wait(ssh);
 			authctxt->postponed = 1;
 		}
 	}
@@ -319,14 +320,16 @@ static int
 process_principals(struct ssh *ssh, FILE *f, const char *file,
     const struct sshkey_cert *cert, struct sshauthopt **authoptsp)
 {
-	char loc[256], line[SSH_MAX_PUBKEY_BYTES], *cp, *ep;
+	char loc[256], *line = NULL, *cp, *ep;
+	size_t linesize = 0;
 	u_long linenum = 0;
 	u_int found_principal = 0;
 
 	if (authoptsp != NULL)
 		*authoptsp = NULL;
 
-	while (read_keyfile_line(f, file, line, sizeof(line), &linenum) != -1) {
+	while (getline(&line, &linesize, f) != -1) {
+		linenum++;
 		/* Always consume entire input */
 		if (found_principal)
 			continue;
@@ -344,6 +347,7 @@ process_principals(struct ssh *ssh, FILE *f, const char *file,
 		if (check_principals_line(ssh, cp, cert, loc, authoptsp) == 0)
 			found_principal = 1;
 	}
+	free(line);
 	return found_principal;
 }
 
@@ -387,7 +391,7 @@ match_principals_command(struct ssh *ssh, struct passwd *user_pw,
 	pid_t pid;
 	char *tmp, *username = NULL, *command = NULL, **av = NULL;
 	char *ca_fp = NULL, *key_fp = NULL, *catext = NULL, *keytext = NULL;
-	char serial_s[16];
+	char serial_s[16], uidstr[32];
 	void (*osigchld)(int);
 
 	if (authoptsp != NULL)
@@ -447,8 +451,11 @@ match_principals_command(struct ssh *ssh, struct passwd *user_pw,
 	}
 	snprintf(serial_s, sizeof(serial_s), "%llu",
 	    (unsigned long long)cert->serial);
+	snprintf(uidstr, sizeof(uidstr), "%llu",
+	    (unsigned long long)user_pw->pw_uid);
 	for (i = 1; i < ac; i++) {
 		tmp = percent_expand(av[i],
+		    "U", uidstr,
 		    "u", user_pw->pw_name,
 		    "h", user_pw->pw_dir,
 		    "t", sshkey_ssh_name(key),
@@ -684,14 +691,16 @@ static int
 check_authkeys_file(struct ssh *ssh, struct passwd *pw, FILE *f,
     char *file, struct sshkey *key, struct sshauthopt **authoptsp)
 {
-	char *cp, line[SSH_MAX_PUBKEY_BYTES], loc[256];
+	char *cp, *line = NULL, loc[256];
+	size_t linesize = 0;
 	int found_key = 0;
 	u_long linenum = 0;
 
 	if (authoptsp != NULL)
 		*authoptsp = NULL;
 
-	while (read_keyfile_line(f, file, line, sizeof(line), &linenum) != -1) {
+	while (getline(&line, &linesize, f) != -1) {
+		linenum++;
 		/* Always consume entire file */
 		if (found_key)
 			continue;
@@ -705,6 +714,7 @@ check_authkeys_file(struct ssh *ssh, struct passwd *pw, FILE *f,
 		if (check_authkey_line(ssh, pw, key, cp, loc, authoptsp) == 0)
 			found_key = 1;
 	}
+	free(line);
 	return found_key;
 }
 
@@ -852,7 +862,7 @@ user_key_command_allowed2(struct ssh *ssh, struct passwd *user_pw,
 	int i, uid_swapped = 0, ac = 0;
 	pid_t pid;
 	char *username = NULL, *key_fp = NULL, *keytext = NULL;
-	char *tmp, *command = NULL, **av = NULL;
+	char uidstr[32], *tmp, *command = NULL, **av = NULL;
 	void (*osigchld)(int);
 
 	if (authoptsp != NULL)
@@ -902,8 +912,11 @@ user_key_command_allowed2(struct ssh *ssh, struct passwd *user_pw,
 		    command);
 		goto out;
 	}
+	snprintf(uidstr, sizeof(uidstr), "%llu",
+	    (unsigned long long)user_pw->pw_uid);
 	for (i = 1; i < ac; i++) {
 		tmp = percent_expand(av[i],
+		    "U", uidstr,
 		    "u", user_pw->pw_name,
 		    "h", user_pw->pw_dir,
 		    "t", sshkey_ssh_name(key),

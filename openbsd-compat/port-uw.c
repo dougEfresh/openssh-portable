@@ -38,7 +38,6 @@
 
 #include "xmalloc.h"
 #include "packet.h"
-#include "buffer.h"
 #include "key.h"
 #include "auth-options.h"
 #include "log.h"
@@ -99,7 +98,7 @@ nischeck(char *namep)
 
 	if ((fd = fopen (password_file, "r")) == NULL) {
 		/*
-		 * If the passwd file has dissapeared we are in a bad state.
+		 * If the passwd file has disappeared we are in a bad state.
 		 * However, returning 0 will send us back through the
 		 * authentication scheme that has checked the ia database for
 		 * passwords earlier.

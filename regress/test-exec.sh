@@ -1,4 +1,4 @@
-#	$OpenBSD: test-exec.sh,v 1.62 2018/03/16 09:06:31 dtucker Exp $
+#	$OpenBSD: test-exec.sh,v 1.63 2018/05/22 00:22:49 djm Exp $
 #	Placed in the Public Domain.
 
 #SUDO=sudo
@@ -75,6 +75,9 @@ SSHKEYSCAN=ssh-keyscan
 SFTP=sftp
 SFTPSERVER=/usr/libexec/openssh/sftp-server
 SCP=scp
+
+# Set by make_tmpdir() on demand (below).
+SSH_REGRESS_TMP=
 
 # Interop testing
 PLINK=plink
@@ -163,9 +166,13 @@ if [ "x$USE_VALGRIND" != "x" ]; then
 	esac
 
 	if [ x"$VG_SKIP" = "x" ]; then
+		VG_LEAK="--leak-check=no"
+		if [ x"$VALGRIND_CHECK_LEAKS" != "x" ]; then
+			VG_LEAK="--leak-check=full"
+		fi
 		VG_IGNORE="/bin/*,/sbin/*,/usr/*,/var/*"
 		VG_LOG="$OBJ/valgrind-out/${VG_TEST}."
-		VG_OPTS="--track-origins=yes --leak-check=full"
+		VG_OPTS="--track-origins=yes $VG_LEAK"
 		VG_OPTS="$VG_OPTS --trace-children=yes"
 		VG_OPTS="$VG_OPTS --trace-children-skip=${VG_IGNORE}"
 		VG_PATH="valgrind"
@@ -318,6 +325,12 @@ stop_sshd ()
 	fi
 }
 
+make_tmpdir ()
+{
+	SSH_REGRESS_TMP="$($OBJ/mkdtemp openssh-regress-XXXXXXXXXXXX)" || \
+	    fatal "failed to create temporary directory"
+}
+
 # helper
 cleanup ()
 {
@@ -327,6 +340,9 @@ cleanup ()
 		else
 			kill $SSH_PID
 		fi
+	fi
+	if [ "x$SSH_REGRESS_TMP" != "x" ]; then
+		rm -rf "$SSH_REGRESS_TMP"
 	fi
 	stop_sshd
 }
@@ -375,7 +391,10 @@ fail ()
 	save_debug_log "FAIL: $@"
 	RESULT=1
 	echo "$@"
-
+	if test "x$TEST_SSH_FAIL_FATAL" != "x" ; then
+		cleanup
+		exit $RESULT
+	fi
 }
 
 fatal ()
