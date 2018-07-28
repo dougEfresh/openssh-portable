@@ -13,8 +13,6 @@ ssh-keygen -t rsa -f /opt/ssh/etc/ssh_host_rsa_key -N ""
 ssh-keygen -t ed25519 -f /opt/ssh/etc/ssh_host_ed25519_key -N ""
 ssh-keygen -t ecdsa -f /opt/ssh/etc/ssh_host_ecdsa_key -N ""
 
-sed -i -e  "s/%RSYSLOG_SERVER%/$RSYSLOG_SERVER/g" /etc/rsyslog.d/10-sshd.conf
-
 nohup rsyslogd -n > /dev/null &
 
 for i in /docker-entrypoint.d/* ; do

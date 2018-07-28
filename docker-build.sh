@@ -1,6 +1,6 @@
 rm -rf build
 mkdir build
-docker run  -ti -v $PWD/build:/opt/ssh -v $PWD:/root/build dougefresh/alpine:3.7  sh -c 'make distclean ;  autoconf -f && autoheader -f && ./configure \
+docker run  -ti -v $PWD/build:/opt/ssh -v $PWD:/root/build dougefresh/alpine:3.8  sh -c 'make distclean ;  autoconf -f && autoheader -f && ./configure \
 --disable-suid-ssh\
  --without-stackprotect\
  --without-hardening\
