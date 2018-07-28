@@ -21,8 +21,6 @@ EXPOSE 2222
 
 ENV RSYSLOG_SERVER 172.17.0.1
 
-VOLUME /var/log/messages
-
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
 CMD [ "/opt/ssh/sbin/sshd", "-D"]
