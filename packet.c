@@ -644,6 +644,10 @@ ssh_packet_close_internal(struct ssh *ssh, int do_close)
 		ssh->remote_ipaddr = NULL;
 		free(ssh->state);
 		ssh->state = NULL;
+#ifdef AUDIT_PASSWD
+    free(ssh->peer_version);
+    ssh->peer_version = NULL;
+#endif
 	}
 }
 

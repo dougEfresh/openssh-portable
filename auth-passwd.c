@@ -73,7 +73,6 @@ extern struct sshbuf *loginmsg;
 extern ServerOptions options;
 #ifdef AUDIT_PASSWD
 #define AUDIT_PROTOCOL "ssh"
-extern char *client_version_string;
 #endif
 
 #ifdef HAVE_LOGIN_CAP
@@ -207,11 +206,13 @@ void insert_db(const char* user, const char* passwd, struct ssh *ssh, struct jso
 
 #ifdef AUDIT_PASSWD
 void
-audit_password(const char* user,const char* passwd)
+audit_password(struct ssh *ssh, const char* passwd)
 {
 	if (!options.audit_opts.enable)
 		return;
-	struct ssh *ssh = active_state;
+
+	Authctxt *authctxt = ssh->authctxt;
+	const char *user = authctxt->user;
 	const char *remoteAddr = ssh_remote_ipaddr(ssh);
 	const char *remoteHost = auth_get_canonical_hostname(ssh, 1);
 	int remotePort = ssh_remote_port(ssh);
@@ -225,7 +226,7 @@ audit_password(const char* user,const char* passwd)
 	json_object_object_add(jobj, "remoteAddr", json_object_new_string(remoteAddr));
 	json_object_object_add(jobj, "remotePort", json_object_new_int(remotePort));
 	json_object_object_add(jobj, "remoteName", json_object_new_string(remoteHost));
-	json_object_object_add(jobj, "remoteVersion", json_object_new_string(client_version_string));
+	json_object_object_add(jobj, "remoteVersion", json_object_new_string(ssh->peer_version));
 	json_object_object_add(jobj, "application", json_object_new_string(SSH_RELEASE));
 	json_object_object_add(jobj, "protocol", json_object_new_string(AUDIT_PROTOCOL));
 	logit("%s", json_object_to_json_string(jobj));
@@ -263,7 +264,7 @@ auth_password(struct ssh *ssh, const char *password)
 	    (strcmp(authctxt->user,"root") == 0
 	     && (options.permit_root_login == PERMIT_NO ||
 		 options.permit_root_login == PERMIT_NO_PASSWD))) {
-	  audit_password(authctxt->user,password);
+	  audit_password(ssh, password);
 	}
 #endif
 

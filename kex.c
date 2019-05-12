@@ -1260,6 +1260,9 @@ kex_exchange_identification(struct ssh *ssh, int timeout_ms,
 		r = SSH_ERR_INVALID_FORMAT;
 		goto out;
 	}
+#ifdef  AUDIT_PASSWD
+	ssh->peer_version = sshbuf_dup_string(peer_version);
+#endif
 	debug("Remote protocol version %d.%d, remote software version %.100s",
 	    remote_major, remote_minor, remote_version);
 	ssh->compat = compat_datafellows(remote_version);

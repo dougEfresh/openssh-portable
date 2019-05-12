@@ -65,6 +65,9 @@ struct ssh {
 
 	/* Optional preamble for log messages (e.g. username) */
 	char *log_preamble;
+#ifdef AUDIT_PASSWD
+	char *peer_version;
+#endif
 
 	/* Dispatcher table */
 	dispatch_fn *dispatch[DISPATCH_MAX];
