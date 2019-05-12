@@ -176,7 +176,6 @@ static char **saved_argv;
 static int saved_argc;
 
 /* re-exec */
-int rexeced_flag = 0;
 static int rexeced_flag = 0;
 #ifdef AUDIT_PASSWD
 static int rexec_flag = 0; //Turn off rexec
