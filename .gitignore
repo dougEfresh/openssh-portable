@@ -30,3 +30,4 @@ build/
 tags
 .vscode/
 .idea/
+*.rpm
