@@ -12,5 +12,6 @@ deploy:
   file: contrib/passwd-pot/rpmbuild/RPMS/x86_64/ssh-passwd-pot-8.0p1-1.amzn2.x86_64.rpm
   on:
     repo: dougEfresh/sshd-passwd-pot
+  skip_cleanup: true  
 script:
 - "./docker-build.sh"
