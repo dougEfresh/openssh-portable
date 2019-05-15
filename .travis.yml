@@ -9,7 +9,7 @@ deploy:
   provider: releases
   api_key:
     secure: oK/G7sNUFdUo2jvhRe93Hx6frpmKLCcQeVbyM8EyyLg81qjQQEgjOjbU736G9fjY5dYev12R/zTzDvEvqzCtnUvuawnu8Mw7kE6+LkWOJD7sTRbamo6Q4//iMttSg9IGJlo024lQY/rpKGwkt/ZhlAfGuwIr7fNmVkZG5z8OuI1+uWrD3axy2NVSol6OK/DlgSn/Qc6gPJyq/CDlimIy9jdWn0Gq5uK5ENaD/Dk3OmymHdLQugw3YVK2hoqDpXNvyWNQPVp21QBeVcnDaGJNsuEFokstzGkgCsAS1iq/zF/ag5AvqffYYAxGhmf2hHMpr1HF+pKYmig3arY6v2VeS+CO/Ya+6Vdbc9zH5VPwGz+kgeWeAs2wR15n35OKk5aB+O5ftRn+EYJoygVs27dMnzKCsnRlWAvPIQ1jut9DoAgHlRJbs6rCvuetw4F6N/UAdhdWiodK+w8ze8leYxvLcbuODtBIJn3Ew2Cgf1//61xzqamHNgGvhNZBgQR18Vn9+WJpayvb75Gwo3grArFo8ESV2TgRGs3mHOokstzbRHIiAVXt7Ns0q2UtOilH/3Ri+6IqT9Nwlogjbe1aLYZHQxhkPkyXYckFJV7ccqElX62NvPVL5DMQsVldw9kLZNtN7omc2u4EWmGfQG6Qnr7yAKI2tY4/+jiFSKSx5v8DJCc=
-  file: contrib/passwd-pot/rpmbuild/RPMS/x86_64/ssh-passwd-pot-8.0p1-1.amzn2.x86_64.rpm
+  file: contrib/passwd-pot/rpmbuild/RPMS/x86_64/*.rpm
   on:
     repo: dougEfresh/sshd-passwd-pot
   skip_cleanup: true  
