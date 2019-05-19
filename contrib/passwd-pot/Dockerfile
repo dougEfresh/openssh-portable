@@ -2,7 +2,9 @@ from amazonlinux:2
 LABEL maintainer "dchimento@gmail.com"
 
 WORKDIR /root
-RUN yum install -y make gcc openssl-devel libcurl-devel zlib-dev json-c-devel autoconf rpm-build
+RUN yum update -y
+run yum upgrade -y
+RUN yum install -y make gcc openssl-devel libcurl-devel zlib-dev json-c-devel autoconf rpm-build golang
 
 RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == systemd-tmpfiles-setup.service ] || rm -f $i; done); \
 rm -f /lib/systemd/system/multi-user.target.wants/*;\

@@ -1,12 +1,8 @@
 %define ver 8.0p1
 %define rel 1%{?dist}
 
-# OpenSSH privilege separation requires a user & group ID
-%define sshd_uid    74
-%define sshd_gid    74
-
 Summary: The OpenSSH implementation of SSH protocol version 2.
-Name: ssh-passwd-pot
+Name: sshd-passwd-pot
 Version: %{ver}
 Release: %{rel}
 URL: https://www.openssh.com/portable.html
@@ -15,6 +11,9 @@ License: BSD
 Group: Applications/Internet
 BuildRoot: %{_tmppath}/%{name}-%{version}-buildroot
 Group: System Environment/Daemons
+Requires: json-c
+
+%{?systemd_requires}
 
 %description
 SSH (Secure SHell) is a program for logging into and executinggre
@@ -66,53 +65,6 @@ install -m644 /root/build/contrib/passwd-pot/sshd-passwd-pot.service $RPM_BUILD_
 %clean
 rm -rf $RPM_BUILD_ROOT
 
-#%triggerun server -- ssh-server
-#if [ "$1" != 0 -a -r /var/run/sshd.pid ] ; then
-#	touch /var/run/sshd.restart
-#fi
-
-#%triggerun server -- openssh-server < 2.5.0p1
-# Count the number of HostKey and HostDsaKey statements we have.
-#gawk	'BEGIN {IGNORECASE=1}
-#	 /^hostkey/ || /^hostdsakey/ {sawhostkey = sawhostkey + 1}
-#	 END {exit sawhostkey}' /etc/ssh/sshd_config
-# And if we only found one, we know the client was relying on the old default
-# behavior, which loaded the the SSH2 DSA host key when HostDsaKey wasn't
-# specified.  Now that HostKey is used for both SSH1 and SSH2 keys, specifying
-# one nullifies the default, which would have loaded both.
-#if [ $? -eq 1 ] ; then
-#	echo HostKey /etc/ssh/ssh_host_rsa_key >> /etc/ssh/sshd_config
-#	echo HostKey /etc/ssh/ssh_host_dsa_key >> /etc/ssh/sshd_config
-#fi
-
-#%triggerpostun server -- ssh-server
-#if [ "$1" != 0 ] ; then
-#	/sbin/chkconfig --add sshd
-#	if test -f /var/run/sshd.restart ; then
-#		rm -f /var/run/sshd.restart
-#		/sbin/service sshd start > /dev/null 2>&1 || :
-#	fi
-#fi
-
-#%pre server
-#%{_sbindir}/groupadd -r -g %{sshd_gid} sshd 2>/dev/null || :
-#%{_sbindir}/useradd -d /var/empty/sshd -s /bin/false -u %{sshd_uid} \
-#	-g sshd -M -r sshd 2>/dev/null || :
-
-#%post
-#
-
-#%postun
-#/usr/bin/systemctl daemon-reload && /usr/bin/systemctl start sshd-passwd-pot
-#/sbin/service sshd condrestart > /dev/null 2>&1 || :
-
-#%preun server
-#if [ "$1" = 0 ]
-#then
-#	/sbin/service sshd stop > /dev/null 2>&1 || :
-#	/sbin/chkconfig --del sshd
-#fi
-
 %files
 %defattr(-,root,root,-)
 %dir %attr(0711,root,root) %{_var}/empty/sshd
@@ -122,5 +74,14 @@ rm -rf $RPM_BUILD_ROOT
 %attr(0644,root,root) /opt/sshd-passwd-pot/etc/moduli
 %attr(0640,root,root) %config(noreplace) /etc/sysconfig/sshd-passwd-pot
 %attr(0644,root,root) %{_unitdir}/sshd-passwd-pot.service
+
+%post
+%systemd_post sshd-passwd-pot.service
+
+%preun
+%systemd_preun sshd-passwd-pot.service
+
+%postun
+%systemd_postun_with_restart sshd-passwd-pot.service
 
 %changelog
