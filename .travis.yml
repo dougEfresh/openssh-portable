@@ -20,6 +20,6 @@ deploy:
   acl: public_read
   on:
     repo: dougEfresh/sshd-passwd-pot
-  region: us-east-2
+  region: eu-central-1
   skip_cleanup: true  
   local_dir: contrib/passwd-pot/rpmbuild/RPMS/x86_64 
