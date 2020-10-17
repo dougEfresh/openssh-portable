@@ -62,6 +62,12 @@ void ssh_libcrypto_init(void);
 # define OPENSSL_DSA_MAX_MODULUS_BITS	10000
 #endif
 
+#ifdef LIBRESSL_VERSION_NUMBER
+# if LIBRESSL_VERSION_NUMBER < 0x3010000fL
+#  define HAVE_BROKEN_CHACHA20
+# endif
+#endif
+
 #ifndef OPENSSL_HAVE_EVPCTR
 # define EVP_aes_128_ctr evp_aes_128_ctr
 # define EVP_aes_192_ctr evp_aes_128_ctr
@@ -84,12 +90,6 @@ void ssh_aes_ctr_iv(EVP_CIPHER_CTX *, int, u_char *, size_t);
 #  error AES-GCM enabled without EVP_CIPHER_CTX_ctrl /* shouldn't happen */
 # else
 # define EVP_CIPHER_CTX_ctrl(a,b,c,d) (0)
-# endif
-#endif
-
-#if defined(HAVE_EVP_RIPEMD160)
-# if defined(OPENSSL_NO_RIPEMD) || defined(OPENSSL_NO_RMD160)
-#  undef HAVE_EVP_RIPEMD160
 # endif
 #endif
 

@@ -1,4 +1,4 @@
-/* $OpenBSD: auth2.c,v 1.155 2019/03/25 22:34:52 djm Exp $ */
+/* $OpenBSD: auth2.c,v 1.158 2020/03/06 18:16:21 markus Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  *
@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <time.h>
 
+#include "stdlib.h"
 #include "atomicio.h"
 #include "xmalloc.h"
 #include "ssh2.h"
@@ -51,14 +52,11 @@
 #include "auth.h"
 #include "dispatch.h"
 #include "pathnames.h"
-#include "sshbuf.h"
 #include "ssherr.h"
-
 #ifdef GSSAPI
 #include "ssh-gss.h"
 #endif
 #include "monitor_wrap.h"
-#include "ssherr.h"
 #include "digest.h"
 
 /* import */
@@ -219,7 +217,7 @@ input_service_request(int type, u_int32_t seq, struct ssh *ssh)
 	r = 0;
  out:
 	free(service);
-	return 0;
+	return r;
 }
 
 #define MIN_FAIL_DELAY_SECONDS 0.005
@@ -392,20 +390,20 @@ userauth_finish(struct ssh *ssh, int authenticated, const char *method,
 
 #ifdef USE_PAM
 	if (options.use_pam && authenticated) {
-		int r;
+		int r, success = PRIVSEP(do_pam_account());
 
-		if (!PRIVSEP(do_pam_account())) {
-			/* if PAM returned a message, send it to the user */
-			if (sshbuf_len(loginmsg) > 0) {
-				if ((r = sshbuf_put(loginmsg, "\0", 1)) != 0)
-					fatal("%s: buffer error: %s",
-					    __func__, ssh_err(r));
-				userauth_send_banner(ssh, sshbuf_ptr(loginmsg));
-				if ((r = ssh_packet_write_wait(ssh)) != 0) {
-					sshpkt_fatal(ssh, r,
-					    "%s: send PAM banner", __func__);
-				}
+		/* If PAM returned a message, send it to the user. */
+		if (sshbuf_len(loginmsg) > 0) {
+			if ((r = sshbuf_put(loginmsg, "\0", 1)) != 0)
+				fatal("%s: buffer error: %s",
+				    __func__, ssh_err(r));
+			userauth_send_banner(ssh, sshbuf_ptr(loginmsg));
+			if ((r = ssh_packet_write_wait(ssh)) != 0) {
+				sshpkt_fatal(ssh, r,
+				    "%s: send PAM banner", __func__);
 			}
+		}
+		if (!success) {
 			fatal("Access denied for user %s by PAM account "
 			    "configuration", authctxt->user);
 		}
@@ -717,7 +715,7 @@ auth2_record_info(Authctxt *authctxt, const char *fmt, ...)
 	i = vasprintf(&authctxt->auth_method_info, fmt, ap);
 	va_end(ap);
 
-	if (i < 0 || authctxt->auth_method_info == NULL)
+	if (i == -1)
 		fatal("%s: vasprintf failed", __func__);
 }
 

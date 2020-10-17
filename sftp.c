@@ -1,4 +1,4 @@
-/* $OpenBSD: sftp.c,v 1.190 2019/01/21 22:50:42 tb Exp $ */
+/* $OpenBSD: sftp.c,v 1.202 2020/10/04 03:04:02 dtucker Exp $ */
 /*
  * Copyright (c) 2001-2004 Damien Miller <djm@openbsd.org>
  *
@@ -53,7 +53,6 @@ typedef void EditLine;
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <stdarg.h>
 
 #ifdef HAVE_UTIL_H
 # include <util.h>
@@ -221,9 +220,12 @@ static const struct CMD cmds[] = {
 static void
 killchild(int signo)
 {
-	if (sshpid > 1) {
-		kill(sshpid, SIGTERM);
-		waitpid(sshpid, NULL, 0);
+	pid_t pid;
+
+	pid = sshpid;
+	if (pid > 1) {
+		kill(pid, SIGTERM);
+		waitpid(pid, NULL, 0);
 	}
 
 	_exit(1);
@@ -284,9 +286,7 @@ help(void)
 	    "df [-hi] [path]                    Display statistics for current directory or\n"
 	    "                                   filesystem containing 'path'\n"
 	    "exit                               Quit sftp\n"
-	    "get [-afPpRr] remote [local]       Download file\n"
-	    "reget [-fPpRr] remote [local]      Resume download file\n"
-	    "reput [-fPpRr] [local] remote      Resume upload file\n"
+	    "get [-afpR] remote [local]         Download file\n"
 	    "help                               Display this help text\n"
 	    "lcd path                           Change local directory to 'path'\n"
 	    "lls [ls-options [path]]            Display local directory listing\n"
@@ -297,10 +297,12 @@ help(void)
 	    "lumask umask                       Set local umask to 'umask'\n"
 	    "mkdir path                         Create remote directory\n"
 	    "progress                           Toggle display of progress meter\n"
-	    "put [-afPpRr] local [remote]       Upload file\n"
+	    "put [-afpR] local [remote]         Upload file\n"
 	    "pwd                                Display remote working directory\n"
 	    "quit                               Quit sftp\n"
+	    "reget [-fpR] remote [local]        Resume download file\n"
 	    "rename oldpath newpath             Rename remote file\n"
+	    "reput [-fpR] local [remote]        Resume upload file\n"
 	    "rm path                            Delete remote file\n"
 	    "rmdir path                         Remove remote directory\n"
 	    "symlink oldpath newpath            Symlink remote file\n"
@@ -1328,7 +1330,7 @@ parse_args(const char **cpp, int *ignore_errors, int *disable_echo, int *aflag,
 	const char *cmd, *cp = *cpp;
 	char *cp2, **argv;
 	int base = 0;
-	long l;
+	long long ll;
 	int path1_mandatory = 0, i, cmdnum, optidx, argc;
 
 	/* Skip leading whitespace */
@@ -1486,16 +1488,16 @@ parse_args(const char **cpp, int *ignore_errors, int *disable_echo, int *aflag,
 		if (argc - optidx < 1)
 			goto need_num_arg;
 		errno = 0;
-		l = strtol(argv[optidx], &cp2, base);
+		ll = strtoll(argv[optidx], &cp2, base);
 		if (cp2 == argv[optidx] || *cp2 != '\0' ||
-		    ((l == LONG_MIN || l == LONG_MAX) && errno == ERANGE) ||
-		    l < 0) {
+		    ((ll == LLONG_MIN || ll == LLONG_MAX) && errno == ERANGE) ||
+		    ll < 0 || ll > UINT32_MAX) {
  need_num_arg:
 			error("You must supply a numeric argument "
 			    "to the %s command.", cmd);
 			return -1;
 		}
-		*n_arg = l;
+		*n_arg = ll;
 		if (cmdnum == I_LUMASK)
 			break;
 		/* Get pathname (mandatory) */
@@ -2189,7 +2191,7 @@ interactive_loop(struct sftp_conn *conn, char *file1, char *file2)
 		el_set(el, EL_BIND, "^I", "ftp-complete", NULL);
 		/* enable ctrl-left-arrow and ctrl-right-arrow */
 		el_set(el, EL_BIND, "\\e[1;5C", "em-next-word", NULL);
-		el_set(el, EL_BIND, "\\e[5C", "em-next-word", NULL);
+		el_set(el, EL_BIND, "\\e\\e[C", "em-next-word", NULL);
 		el_set(el, EL_BIND, "\\e[1;5D", "ed-prev-word", NULL);
 		el_set(el, EL_BIND, "\\e\\e[D", "ed-prev-word", NULL);
 		/* make ^w match ksh behaviour */
@@ -2241,7 +2243,7 @@ interactive_loop(struct sftp_conn *conn, char *file1, char *file2)
 	interactive = !batchmode && isatty(STDIN_FILENO);
 	err = 0;
 	for (;;) {
-		signal(SIGINT, SIG_IGN);
+		ssh_signal(SIGINT, SIG_IGN);
 
 		if (el == NULL) {
 			if (interactive)
@@ -2273,14 +2275,14 @@ interactive_loop(struct sftp_conn *conn, char *file1, char *file2)
 
 		/* Handle user interrupts gracefully during commands */
 		interrupted = 0;
-		signal(SIGINT, cmd_interrupt);
+		ssh_signal(SIGINT, cmd_interrupt);
 
 		err = parse_dispatch_command(conn, cmd, &remote_path,
 		    startdir, batchmode, !interactive && el == NULL);
 		if (err != 0)
 			break;
 	}
-	signal(SIGCHLD, SIG_DFL);
+	ssh_signal(SIGCHLD, SIG_DFL);
 	free(remote_path);
 	free(startdir);
 	free(conn);
@@ -2337,20 +2339,20 @@ connect_to_server(char *path, char **args, int *in, int *out)
 		 * kill it too.  Contrawise, since sftp sends SIGTERMs to the
 		 * underlying ssh, it must *not* ignore that signal.
 		 */
-		signal(SIGINT, SIG_IGN);
-		signal(SIGTERM, SIG_DFL);
+		ssh_signal(SIGINT, SIG_IGN);
+		ssh_signal(SIGTERM, SIG_DFL);
 		execvp(path, args);
 		fprintf(stderr, "exec: %s: %s\n", path, strerror(errno));
 		_exit(1);
 	}
 
-	signal(SIGTERM, killchild);
-	signal(SIGINT, killchild);
-	signal(SIGHUP, killchild);
-	signal(SIGTSTP, suspchild);
-	signal(SIGTTIN, suspchild);
-	signal(SIGTTOU, suspchild);
-	signal(SIGCHLD, sigchld_handler);
+	ssh_signal(SIGTERM, killchild);
+	ssh_signal(SIGINT, killchild);
+	ssh_signal(SIGHUP, killchild);
+	ssh_signal(SIGTSTP, suspchild);
+	ssh_signal(SIGTTIN, suspchild);
+	ssh_signal(SIGTTOU, suspchild);
+	ssh_signal(SIGCHLD, sigchld_handler);
 	close(c_in);
 	close(c_out);
 }
@@ -2361,7 +2363,7 @@ usage(void)
 	extern char *__progname;
 
 	fprintf(stderr,
-	    "usage: %s [-46aCfpqrv] [-B buffer_size] [-b batchfile] [-c cipher]\n"
+	    "usage: %s [-46AaCfNpqrv] [-B buffer_size] [-b batchfile] [-c cipher]\n"
 	    "          [-D sftp_server_path] [-F ssh_config] [-i identity_file]\n"
 	    "          [-J destination] [-l limit] [-o ssh_option] [-P port]\n"
 	    "          [-R num_requests] [-S program] [-s subsystem | sftp_server]\n"
@@ -2373,9 +2375,9 @@ usage(void)
 int
 main(int argc, char **argv)
 {
-	int in, out, ch, err, tmp, port = -1;
+	int in, out, ch, err, tmp, port = -1, noisy = 0;
 	char *host = NULL, *user, *cp, *file2 = NULL;
-	int debug_level = 0, sshver = 2;
+	int debug_level = 0;
 	char *file1 = NULL, *sftp_server = NULL;
 	char *ssh_program = _PATH_SSH_PROGRAM, *sftp_direct = NULL;
 	const char *errstr;
@@ -2388,7 +2390,6 @@ main(int argc, char **argv)
 	size_t num_requests = DEFAULT_NUM_REQUESTS;
 	long long limit_kbps = 0;
 
-	ssh_malloc_init();	/* must be called before any mallocs */
 	/* Ensure that fds 0, 1 and 2 are open or directed to /dev/null */
 	sanitise_stdfd();
 	msetlocale();
@@ -2400,7 +2401,6 @@ main(int argc, char **argv)
 	args.list = NULL;
 	addargs(&args, "%s", ssh_program);
 	addargs(&args, "-oForwardX11 no");
-	addargs(&args, "-oForwardAgent no");
 	addargs(&args, "-oPermitLocalCommand no");
 	addargs(&args, "-oClearAllForwardings yes");
 
@@ -2408,9 +2408,10 @@ main(int argc, char **argv)
 	infile = stdin;
 
 	while ((ch = getopt(argc, argv,
-	    "1246afhpqrvCc:D:i:l:o:s:S:b:B:F:J:P:R:")) != -1) {
+	    "1246AafhNpqrvCc:D:i:l:o:s:S:b:B:F:J:P:R:")) != -1) {
 		switch (ch) {
 		/* Passed through to ssh(1) */
+		case 'A':
 		case '4':
 		case '6':
 		case 'C':
@@ -2444,12 +2445,10 @@ main(int argc, char **argv)
 			debug_level++;
 			break;
 		case '1':
-			sshver = 1;
-			if (sftp_server == NULL)
-				sftp_server = _PATH_SFTP_SERVER;
+			fatal("SSH protocol v.1 is no longer supported");
 			break;
 		case '2':
-			sshver = 2;
+			/* accept silently */
 			break;
 		case 'a':
 			global_aflag = 1;
@@ -2473,6 +2472,9 @@ main(int argc, char **argv)
 			break;
 		case 'f':
 			global_fflag = 1;
+			break;
+		case 'N':
+			noisy = 1; /* Used to clear quiet mode after getopt */
 			break;
 		case 'p':
 			global_pflag = 1;
@@ -2509,8 +2511,14 @@ main(int argc, char **argv)
 		}
 	}
 
+	/* Do this last because we want the user to be able to override it */
+	addargs(&args, "-oForwardAgent no");
+
 	if (!isatty(STDERR_FILENO))
 		showprogress = 0;
+
+	if (noisy)
+		quiet = 0;
 
 	log_init(argv[0], ll, SYSLOG_FACILITY_USER, 1);
 
@@ -2528,12 +2536,17 @@ main(int argc, char **argv)
 				port = tmp;
 			break;
 		default:
+			/* Try with user, host and path. */
 			if (parse_user_host_path(*argv, &user, &host,
-			    &file1) == -1) {
-				/* Treat as a plain hostname. */
-				host = xstrdup(*argv);
-				host = cleanhostname(host);
-			}
+			    &file1) == 0)
+				break;
+			/* Try with user and host. */
+			if (parse_user_host_port(*argv, &user, &host, NULL)
+			    == 0)
+				break;
+			/* Treat as a plain hostname. */
+			host = xstrdup(*argv);
+			host = cleanhostname(host);
 			break;
 		}
 		file2 = *(argv + 1);
@@ -2549,7 +2562,6 @@ main(int argc, char **argv)
 			addargs(&args, "-l");
 			addargs(&args, "%s", user);
 		}
-		addargs(&args, "-oProtocol %d", sshver);
 
 		/* no subsystem if the server-spec contains a '/' */
 		if (sftp_server == NULL || strchr(sftp_server, '/') == NULL)

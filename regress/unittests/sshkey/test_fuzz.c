@@ -1,4 +1,4 @@
-/* 	$OpenBSD: test_fuzz.c,v 1.9 2018/10/17 23:28:05 djm Exp $ */
+/* 	$OpenBSD: test_fuzz.c,v 1.12 2020/08/27 03:55:22 djm Exp $ */
 /*
  * Fuzz tests for key parsing
  *
@@ -87,10 +87,11 @@ sig_fuzz(struct sshkey *k, const char *sig_alg)
 	if (test_is_slow())
 		fuzzers |= FUZZ_2_BIT_FLIP;
 
-	ASSERT_INT_EQ(sshkey_sign(k, &sig, &l, c, sizeof(c), sig_alg, 0), 0);
+	ASSERT_INT_EQ(sshkey_sign(k, &sig, &l, c, sizeof(c),
+	    sig_alg, NULL, NULL, 0), 0);
 	ASSERT_SIZE_T_GT(l, 0);
 	fuzz = fuzz_begin(fuzzers, sig, l);
-	ASSERT_INT_EQ(sshkey_verify(k, sig, l, c, sizeof(c), NULL, 0), 0);
+	ASSERT_INT_EQ(sshkey_verify(k, sig, l, c, sizeof(c), NULL, 0, NULL), 0);
 	free(sig);
 	TEST_ONERROR(onerror, fuzz);
 	for(; !fuzz_done(fuzz); fuzz_next(fuzz)) {
@@ -98,7 +99,7 @@ sig_fuzz(struct sshkey *k, const char *sig_alg)
 		if (fuzz_matches_original(fuzz))
 			continue;
 		ASSERT_INT_NE(sshkey_verify(k, fuzz_ptr(fuzz), fuzz_len(fuzz),
-		    c, sizeof(c), NULL, 0), 0);
+		    c, sizeof(c), NULL, 0, NULL), 0);
 	}
 	fuzz_cleanup(fuzz);
 }
@@ -113,7 +114,7 @@ sshkey_fuzz_tests(void)
 	struct fuzz *fuzz;
 	int r, i;
 
-
+#ifdef WITH_OPENSSL
 	TEST_START("fuzz RSA private");
 	buf = load_file("rsa_1");
 	fuzz = fuzz_begin(FUZZ_BASE64, sshbuf_mutable_ptr(buf),
@@ -246,7 +247,8 @@ sshkey_fuzz_tests(void)
 	sshbuf_free(fuzzed);
 	fuzz_cleanup(fuzz);
 	TEST_DONE();
-#endif
+#endif /* OPENSSL_HAS_ECC */
+#endif /* WITH_OPENSSL */
 
 	TEST_START("fuzz Ed25519 private");
 	buf = load_file("ed25519_1");
@@ -270,6 +272,7 @@ sshkey_fuzz_tests(void)
 	fuzz_cleanup(fuzz);
 	TEST_DONE();
 
+#ifdef WITH_OPENSSL
 	TEST_START("fuzz RSA public");
 	buf = load_file("rsa_1");
 	ASSERT_INT_EQ(sshkey_parse_private_fileblob(buf, "", &k1, NULL), 0);
@@ -312,7 +315,8 @@ sshkey_fuzz_tests(void)
 	public_fuzz(k1);
 	sshkey_free(k1);
 	TEST_DONE();
-#endif
+#endif /* OPENSSL_HAS_ECC */
+#endif /* WITH_OPENSSL */
 
 	TEST_START("fuzz Ed25519 public");
 	buf = load_file("ed25519_1");
@@ -328,6 +332,7 @@ sshkey_fuzz_tests(void)
 	sshkey_free(k1);
 	TEST_DONE();
 
+#ifdef WITH_OPENSSL
 	TEST_START("fuzz RSA sig");
 	buf = load_file("rsa_1");
 	ASSERT_INT_EQ(sshkey_parse_private_fileblob(buf, "", &k1, NULL), 0);
@@ -368,7 +373,8 @@ sshkey_fuzz_tests(void)
 	sig_fuzz(k1, NULL);
 	sshkey_free(k1);
 	TEST_DONE();
-#endif
+#endif /* OPENSSL_HAS_ECC */
+#endif /* WITH_OPENSSL */
 
 	TEST_START("fuzz Ed25519 sig");
 	buf = load_file("ed25519_1");
@@ -379,5 +385,6 @@ sshkey_fuzz_tests(void)
 	TEST_DONE();
 
 /* XXX fuzz decoded new-format blobs too */
+/* XXX fuzz XMSS too */
 
 }

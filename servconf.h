@@ -1,4 +1,4 @@
-/* $OpenBSD: servconf.h,v 1.139 2019/01/19 21:37:48 djm Exp $ */
+/* $OpenBSD: servconf.h,v 1.146 2020/08/27 01:07:10 djm Exp $ */
 
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
@@ -15,6 +15,8 @@
 
 #ifndef SERVCONF_H
 #define SERVCONF_H
+
+#include <openbsd-compat/sys-queue.h>
 
 #define MAX_PORTS		256	/* Max # ports. */
 
@@ -35,6 +37,11 @@
 /* PermitOpen */
 #define PERMITOPEN_ANY		0
 #define PERMITOPEN_NONE		-2
+
+/* IgnoreRhosts */
+#define IGNORE_RHOSTS_NO	0
+#define IGNORE_RHOSTS_YES	1
+#define IGNORE_RHOSTS_SHOSTS	2
 
 #define DEFAULT_AUTH_FAIL_MAX	6	/* Default for MaxAuthTries */
 #define DEFAULT_SESSIONS_MAX	10	/* Default for MaxSessions */
@@ -69,7 +76,11 @@ typedef struct {
 	int port;
 #endif
 } audit_options;
-#endif
+
+/* PubkeyAuthOptions flags */
+#define PUBKEYAUTH_TOUCH_REQUIRED	(1)
+#define PUBKEYAUTH_VERIFY_REQUIRED	(1<<1)
+
 
 struct ssh;
 struct fwd_perm_list;
@@ -143,6 +154,7 @@ typedef struct {
 	char   *ca_sign_algorithms;	/* Allowed CA signature algorithms */
 	int     pubkey_authentication;	/* If true, permit ssh2 pubkey authentication. */
 	char   *pubkey_key_types;	/* Key types allowed for public key */
+	int	pubkey_auth_options;	/* -1 or mask of PUBKEYAUTH_* flags */
 	int     kerberos_authentication;	/* If true, permit Kerberos
 						 * authentication. */
 	int     kerberos_or_local_passwd;	/* If true, permit kerberos
@@ -164,7 +176,7 @@ typedef struct {
 	int     permit_empty_passwd;	/* If false, do not permit empty
 					 * passwords. */
 	int     permit_user_env;	/* If true, read ~/.ssh/environment */
-	char   *permit_user_env_whitelist; /* pattern-list whitelist */
+	char   *permit_user_env_allowlist; /* pattern-list of allowed env names */
 	int     compression;	/* If true, compression is allowed */
 	int	allow_tcp_forwarding; /* One of FORWARD_* */
 	int	allow_streamlocal_forwarding; /* One of FORWARD_* */
@@ -243,6 +255,7 @@ typedef struct {
 #endif
 	int	expose_userauth_info;
 	u_int64_t timing_secret;
+	char   *sk_provider;
 }       ServerOptions;
 
 /* Information about the incoming connection as used by Match */
@@ -253,13 +266,24 @@ struct connection_info {
 	const char *laddress;	/* local address */
 	int lport;		/* local port */
 	const char *rdomain;	/* routing domain if available */
+	int test;		/* test mode, allow some attributes to be
+				 * unspecified */
 };
+
+/* List of included files for re-exec from the parsed configuration */
+struct include_item {
+	char *selector;
+	char *filename;
+	struct sshbuf *contents;
+	TAILQ_ENTRY(include_item) entry;
+};
+TAILQ_HEAD(include_list, include_item);
 
 
 /*
  * These are string config options that must be copied between the
  * Match sub-config and the main config, and must be sent from the
- * privsep slave to the privsep master. We use a macro to ensure all
+ * privsep child to the privsep master. We use a macro to ensure all
  * the options are copied and the copies are done in the correct order.
  *
  * NB. an option must appear in servconf.c:copy_set_server_options() or
@@ -278,7 +302,7 @@ struct connection_info {
 		M_CP_STROPT(pubkey_key_types); \
 		M_CP_STROPT(ca_sign_algorithms); \
 		M_CP_STROPT(routing_domain); \
-		M_CP_STROPT(permit_user_env_whitelist); \
+		M_CP_STROPT(permit_user_env_allowlist); \
 		M_CP_STRARRAYOPT(authorized_keys_files, num_authkeys_files); \
 		M_CP_STRARRAYOPT(allow_users, num_allow_users); \
 		M_CP_STRARRAYOPT(deny_users, num_deny_users); \
@@ -294,12 +318,13 @@ struct connection_info *get_connection_info(struct ssh *, int, int);
 void	 initialize_server_options(ServerOptions *);
 void	 fill_default_server_options(ServerOptions *);
 int	 process_server_config_line(ServerOptions *, char *, const char *, int,
-	     int *, struct connection_info *);
+	     int *, struct connection_info *, struct include_list *includes);
 void	 process_permitopen(struct ssh *ssh, ServerOptions *options);
 void	 load_server_config(const char *, struct sshbuf *);
 void	 parse_server_config(ServerOptions *, const char *, struct sshbuf *,
-	     struct connection_info *);
-void	 parse_server_match_config(ServerOptions *, struct connection_info *);
+	     struct include_list *includes, struct connection_info *);
+void	 parse_server_match_config(ServerOptions *,
+	     struct include_list *includes, struct connection_info *);
 int	 parse_server_match_testspec(struct connection_info *, char *);
 int	 server_match_spec_complete(struct connection_info *);
 void	 copy_set_server_options(ServerOptions *, ServerOptions *, int);

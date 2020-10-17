@@ -156,6 +156,7 @@
 
 #include <netinet/in.h>
 
+#include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
 #ifdef HAVE_PATHS_H
@@ -163,6 +164,7 @@
 #endif
 #include <pwd.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -775,6 +777,9 @@ construct_utmpx(struct logininfo *li, struct utmpx *utx)
 # ifdef HAVE_HOST_IN_UTMPX
 	strncpy(utx->ut_host, li->hostname,
 	    MIN_SIZEOF(utx->ut_host, li->hostname));
+# endif
+# ifdef HAVE_SS_IN_UTMPX
+	utx->ut_ss = li->hostaddr.sa_storage;
 # endif
 # ifdef HAVE_ADDR_IN_UTMPX
 	/* this is just a 32-bit IP address */

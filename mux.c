@@ -1,4 +1,4 @@
-/* $OpenBSD: mux.c,v 1.79 2019/01/19 21:35:25 djm Exp $ */
+/* $OpenBSD: mux.c,v 1.84 2020/10/03 09:22:26 djm Exp $ */
 /*
  * Copyright (c) 2002-2008 Damien Miller <djm@openbsd.org>
  *
@@ -187,7 +187,7 @@ static const struct {
 	{ 0, NULL }
 };
 
-/* Cleanup callback fired on closure of mux slave _session_ channel */
+/* Cleanup callback fired on closure of mux client _session_ channel */
 /* ARGSUSED */
 static void
 mux_master_session_cleanup_cb(struct ssh *ssh, int cid, void *unused)
@@ -209,7 +209,7 @@ mux_master_session_cleanup_cb(struct ssh *ssh, int cid, void *unused)
 	channel_cancel_cleanup(ssh, c->self);
 }
 
-/* Cleanup callback fired on closure of mux slave _control_ channel */
+/* Cleanup callback fired on closure of mux client _control_ channel */
 /* ARGSUSED */
 static void
 mux_master_control_cleanup_cb(struct ssh *ssh, int cid, void *unused)
@@ -287,7 +287,7 @@ mux_master_process_hello(struct ssh *ssh, u_int rid,
 		    "(expected %u)", __func__, ver, SSHMUX_VER);
 		return -1;
 	}
-	debug2("%s: channel %d slave version %u", __func__, c->self, ver);
+	debug2("%s: channel %d client version %u", __func__, c->self, ver);
 
 	/* No extensions are presently defined */
 	while (sshbuf_len(m) > 0) {
@@ -401,7 +401,7 @@ mux_master_process_new_session(struct ssh *ssh, u_int rid,
 	/* Gather fds from client */
 	for(i = 0; i < 3; i++) {
 		if ((new_fd[i] = mm_receive_fd(c->sock)) == -1) {
-			error("%s: failed to receive fd %d from slave",
+			error("%s: failed to receive fd %d from client",
 			    __func__, i);
 			for (j = 0; j < i; j++)
 				close(new_fd[j]);
@@ -994,7 +994,7 @@ mux_master_process_stdio_fwd(struct ssh *ssh, u_int rid,
 	/* Gather fds from client */
 	for(i = 0; i < 2; i++) {
 		if ((new_fd[i] = mm_receive_fd(c->sock)) == -1) {
-			error("%s: failed to receive fd %d from slave",
+			error("%s: failed to receive fd %d from client",
 			    __func__, i);
 			for (j = 0; j < i; j++)
 				close(new_fd[j]);
@@ -1154,7 +1154,7 @@ mux_master_process_proxy(struct ssh *ssh, u_int rid,
 	return 0;
 }
 
-/* Channel callbacks fired on read/write from mux slave fd */
+/* Channel callbacks fired on read/write from mux client fd */
 static int
 mux_master_read_cb(struct ssh *ssh, Channel *c)
 {
@@ -1492,7 +1492,7 @@ mux_client_read(int fd, struct sshbuf *b, size_t need)
 			return -1;
 		}
 		len = read(fd, p + have, need - have);
-		if (len < 0) {
+		if (len == -1) {
 			switch (errno) {
 #if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
 			case EWOULDBLOCK:
@@ -1541,7 +1541,7 @@ mux_client_write_packet(int fd, struct sshbuf *m)
 			return -1;
 		}
 		len = write(fd, ptr + have, need - have);
-		if (len < 0) {
+		if (len == -1) {
 			switch (errno) {
 #if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
 			case EWOULDBLOCK:
@@ -1902,7 +1902,7 @@ mux_client_request_session(int fd)
 	const char *term;
 	u_int echar, rid, sid, esid, exitval, type, exitval_seen;
 	extern char **environ;
-	int r, i, devnull, rawmode;
+	int r, i, rawmode;
 
 	debug3("%s: entering", __func__);
 
@@ -1911,16 +1911,10 @@ mux_client_request_session(int fd)
 		return -1;
 	}
 
-	signal(SIGPIPE, SIG_IGN);
+	ssh_signal(SIGPIPE, SIG_IGN);
 
-	if (stdin_null_flag) {
-		if ((devnull = open(_PATH_DEVNULL, O_RDONLY)) == -1)
-			fatal("open(/dev/null): %s", strerror(errno));
-		if (dup2(devnull, STDIN_FILENO) == -1)
-			fatal("dup2: %s", strerror(errno));
-		if (devnull > STDERR_FILENO)
-			close(devnull);
-	}
+	if (stdin_null_flag && stdfd_devnull(1, 0, 0) == -1)
+		fatal("%s: stdfd_devnull failed", __func__);
 
 	if ((term = getenv("TERM")) == NULL)
 		term = "";
@@ -1987,6 +1981,7 @@ mux_client_request_session(int fd)
 	case MUX_S_SESSION_OPENED:
 		if ((r = sshbuf_get_u32(m, &sid)) != 0)
 			fatal("%s: decode ID: %s", __func__, ssh_err(r));
+		debug("%s: master session id: %u", __func__, sid);
 		break;
 	case MUX_S_PERMISSION_DENIED:
 		if ((r = sshbuf_get_cstring(m, &e, NULL)) != 0)
@@ -2012,10 +2007,10 @@ mux_client_request_session(int fd)
 		fatal("%s pledge(): %s", __func__, strerror(errno));
 	platform_pledge_mux();
 
-	signal(SIGHUP, control_client_sighandler);
-	signal(SIGINT, control_client_sighandler);
-	signal(SIGTERM, control_client_sighandler);
-	signal(SIGWINCH, control_client_sigrelay);
+	ssh_signal(SIGHUP, control_client_sighandler);
+	ssh_signal(SIGINT, control_client_sighandler);
+	ssh_signal(SIGTERM, control_client_sighandler);
+	ssh_signal(SIGWINCH, control_client_sigrelay);
 
 	rawmode = tty_flag;
 	if (tty_flag)
@@ -2136,7 +2131,7 @@ mux_client_request_stdio_fwd(int fd)
 	struct sshbuf *m;
 	char *e;
 	u_int type, rid, sid;
-	int r, devnull;
+	int r;
 
 	debug3("%s: entering", __func__);
 
@@ -2145,16 +2140,10 @@ mux_client_request_stdio_fwd(int fd)
 		return -1;
 	}
 
-	signal(SIGPIPE, SIG_IGN);
+	ssh_signal(SIGPIPE, SIG_IGN);
 
-	if (stdin_null_flag) {
-		if ((devnull = open(_PATH_DEVNULL, O_RDONLY)) == -1)
-			fatal("open(/dev/null): %s", strerror(errno));
-		if (dup2(devnull, STDIN_FILENO) == -1)
-			fatal("dup2: %s", strerror(errno));
-		if (devnull > STDERR_FILENO)
-			close(devnull);
-	}
+	if (stdin_null_flag && stdfd_devnull(1, 0, 0) == -1)
+		fatal("%s: stdfd_devnull failed", __func__);
 
 	if ((m = sshbuf_new()) == NULL)
 		fatal("%s: sshbuf_new", __func__);
@@ -2219,10 +2208,10 @@ mux_client_request_stdio_fwd(int fd)
 	}
 	muxclient_request_id++;
 
-	signal(SIGHUP, control_client_sighandler);
-	signal(SIGINT, control_client_sighandler);
-	signal(SIGTERM, control_client_sighandler);
-	signal(SIGWINCH, control_client_sigrelay);
+	ssh_signal(SIGHUP, control_client_sighandler);
+	ssh_signal(SIGINT, control_client_sighandler);
+	ssh_signal(SIGTERM, control_client_sighandler);
+	ssh_signal(SIGWINCH, control_client_sigrelay);
 
 	/*
 	 * Stick around until the controlee closes the client_fd.
@@ -2324,7 +2313,7 @@ muxclient(const char *path)
 		fatal("ControlPath too long ('%s' >= %u bytes)", path,
 		     (unsigned int)sizeof(addr.sun_path));
 
-	if ((sock = socket(PF_UNIX, SOCK_STREAM, 0)) < 0)
+	if ((sock = socket(PF_UNIX, SOCK_STREAM, 0)) == -1)
 		fatal("%s socket(): %s", __func__, strerror(errno));
 
 	if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1) {

@@ -1,4 +1,4 @@
-#	$OpenBSD: cert-userkey.sh,v 1.20 2018/10/31 11:09:27 dtucker Exp $
+#	$OpenBSD: cert-userkey.sh,v 1.25 2020/01/03 03:02:26 djm Exp $
 #	Placed in the Public Domain.
 
 tid="certified user keys"
@@ -7,24 +7,37 @@ rm -f $OBJ/authorized_keys_$USER $OBJ/user_ca_key* $OBJ/cert_user_key*
 cp $OBJ/sshd_proxy $OBJ/sshd_proxy_bak
 cp $OBJ/ssh_proxy $OBJ/ssh_proxy_bak
 
-PLAIN_TYPES=`$SSH -Q key-plain | sed 's/^ssh-dss/ssh-dsa/;s/^ssh-//'`
+PLAIN_TYPES=`$SSH -Q key-plain | maybe_filter_sk | sed 's/^ssh-dss/ssh-dsa/;s/^ssh-//'`
 EXTRA_TYPES=""
+rsa=""
 
 if echo "$PLAIN_TYPES" | grep '^rsa$' >/dev/null 2>&1 ; then
+	rsa=rsa
 	PLAIN_TYPES="$PLAIN_TYPES rsa-sha2-256 rsa-sha2-512"
 fi
 
 kname() {
-	case $ktype in
-	rsa-sha2-*) n="$ktype" ;;
+	case $1 in
+	rsa-sha2-*) n="$1" ;;
+	sk-ecdsa-*) n="sk-ecdsa" ;;
+	sk-ssh-ed25519*) n="sk-ssh-ed25519" ;;
 	# subshell because some seds will add a newline
 	*) n=$(echo $1 | sed 's/^dsa/ssh-dss/;s/^rsa/ssh-rsa/;s/^ed/ssh-ed/') ;;
 	esac
-	echo "$n*,ssh-rsa*,ssh-ed25519*"
+	if [ -z "$rsa" ]; then
+		echo "$n*,ssh-ed25519*"
+	else
+		echo "$n*,ssh-rsa*,ssh-ed25519*"
+	fi
 }
 
 # Create a CA key
-${SSHKEYGEN} -q -N '' -t rsa  -f $OBJ/user_ca_key ||\
+if [ ! -z "$rsa" ]; then
+	catype=rsa
+else
+	catype=ed25519
+fi
+${SSHKEYGEN} -q -N '' -t $catype  -f $OBJ/user_ca_key ||\
 	fail "ssh-keygen of user_ca_key failed"
 
 # Generate and sign user keys
@@ -47,7 +60,7 @@ done
 # Test explicitly-specified principals
 for ktype in $EXTRA_TYPES $PLAIN_TYPES ; do
 	t=$(kname $ktype)
-	for privsep in yes sandbox ; do
+	for privsep in yes ; do
 		_prefix="${ktype} privsep $privsep"
 
 		# Setup for AuthorizedPrincipalsFile
@@ -184,7 +197,7 @@ basic_tests() {
 
 	for ktype in $PLAIN_TYPES ; do
 		t=$(kname $ktype)
-		for privsep in yes no ; do
+		for privsep in yes ; do
 			_prefix="${ktype} privsep $privsep $auth"
 			# Simple connect
 			verbose "$tid: ${_prefix} connect"
@@ -283,7 +296,7 @@ test_one() {
 	fi
 
 	for auth in $auth_choice ; do
-		for ktype in rsa ed25519 ; do
+		for ktype in $rsa ed25519 ; do
 			cat $OBJ/sshd_proxy_bak > $OBJ/sshd_proxy
 			if test "x$auth" = "xauthorized_keys" ; then
 				# Add CA to authorized_keys
@@ -327,7 +340,7 @@ test_one() {
 test_one "correct principal"	success "-n ${USER}"
 test_one "host-certificate"	failure "-n ${USER} -h"
 test_one "wrong principals"	failure "-n foo"
-test_one "cert not yet valid"	failure "-n ${USER} -V20200101:20300101"
+test_one "cert not yet valid"	failure "-n ${USER} -V20300101:20320101"
 test_one "cert expired"		failure "-n ${USER} -V19800101:19900101"
 test_one "cert valid interval"	success "-n ${USER} -V-1w:+2w"
 test_one "wrong source-address"	failure "-n ${USER} -Osource-address=10.0.0.0/8"

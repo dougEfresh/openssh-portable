@@ -1,4 +1,4 @@
-#	$OpenBSD: principals-command.sh,v 1.6 2018/11/22 08:48:32 dtucker Exp $
+#	$OpenBSD: principals-command.sh,v 1.11 2019/12/16 02:39:05 djm Exp $
 #	Placed in the Public Domain.
 
 tid="authorized principals command"
@@ -12,12 +12,17 @@ if [ -z "$SUDO" -a ! -w /var/run ]; then
 	exit 0
 fi
 
+case "$SSH_KEYTYPES" in
+	*ssh-rsa*)	userkeytype=rsa ;;
+	*)		userkeytype=ed25519 ;;
+esac
+
 SERIAL=$$
 
 # Create a CA key and a user certificate.
 ${SSHKEYGEN} -q -N '' -t ed25519  -f $OBJ/user_ca_key || \
 	fatal "ssh-keygen of user_ca_key failed"
-${SSHKEYGEN} -q -N '' -t rsa -f $OBJ/cert_user_key || \
+${SSHKEYGEN} -q -N '' -t ${userkeytype} -f $OBJ/cert_user_key || \
 	fatal "ssh-keygen of cert_user_key failed"
 ${SSHKEYGEN} -q -s $OBJ/user_ca_key -I "Joanne User" \
     -z $$ -n ${USER},mekmitasdigoat $OBJ/cert_user_key || \
@@ -35,7 +40,7 @@ trap "$SUDO rm -f ${PRINCIPALS_COMMAND}" 0
 cat << _EOF | $SUDO sh -c "cat > '$PRINCIPALS_COMMAND'"
 #!/bin/sh
 test "x\$1" != "x${LOGNAME}" && exit 1
-test "x\$2" != "xssh-rsa-cert-v01@openssh.com" && exit 1
+test "x\$2" != "xssh-${userkeytype}-cert-v01@openssh.com" && exit 1
 test "x\$3" != "xssh-ed25519" && exit 1
 test "x\$4" != "xJoanne User" && exit 1
 test "x\$5" != "x${SERIAL}" && exit 1
@@ -58,7 +63,7 @@ fi
 
 if [ -x $PRINCIPALS_COMMAND ]; then
 	# Test explicitly-specified principals
-	for privsep in yes sandbox ; do
+	for privsep in yes ; do
 		_prefix="privsep $privsep"
 
 		# Setup for AuthorizedPrincipalsCommand

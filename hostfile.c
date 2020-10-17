@@ -1,4 +1,4 @@
-/* $OpenBSD: hostfile.c,v 1.73 2018/07/16 03:09:13 djm Exp $ */
+/* $OpenBSD: hostfile.c,v 1.85 2020/10/11 22:13:37 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -49,7 +49,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h>
 #include <unistd.h>
 
 #include "xmalloc.h"
@@ -58,6 +57,7 @@
 #include "hostfile.h"
 #include "log.h"
 #include "misc.h"
+#include "pathnames.h"
 #include "ssherr.h"
 #include "digest.h"
 #include "hmac.h"
@@ -163,13 +163,12 @@ int
 hostfile_read_key(char **cpp, u_int *bitsp, struct sshkey *ret)
 {
 	char *cp;
-	int r;
 
 	/* Skip leading whitespace. */
 	for (cp = *cpp; *cp == ' ' || *cp == '\t'; cp++)
 		;
 
-	if ((r = sshkey_read(ret, &cp)) != 0)
+	if (sshkey_read(ret, &cp) != 0)
 		return 0;
 
 	/* Skip trailing whitespace. */
@@ -300,8 +299,7 @@ free_hostkeys(struct hostkeys *hostkeys)
 		explicit_bzero(hostkeys->entries + i, sizeof(*hostkeys->entries));
 	}
 	free(hostkeys->entries);
-	explicit_bzero(hostkeys, sizeof(*hostkeys));
-	free(hostkeys);
+	freezero(hostkeys, sizeof(*hostkeys));
 }
 
 static int
@@ -315,7 +313,7 @@ check_key_not_revoked(struct hostkeys *hostkeys, struct sshkey *k)
 			continue;
 		if (sshkey_equal_public(k, hostkeys->entries[i].key))
 			return -1;
-		if (is_cert &&
+		if (is_cert && k != NULL &&
 		    sshkey_equal_public(k->cert->signature_key,
 		    hostkeys->entries[i].key))
 			return -1;
@@ -340,7 +338,7 @@ check_key_not_revoked(struct hostkeys *hostkeys, struct sshkey *k)
  */
 static HostStatus
 check_hostkeys_by_key_or_type(struct hostkeys *hostkeys,
-    struct sshkey *k, int keytype, const struct hostkey_entry **found)
+    struct sshkey *k, int keytype, int nid, const struct hostkey_entry **found)
 {
 	u_int i;
 	HostStatus end_return = HOST_NEW;
@@ -355,6 +353,10 @@ check_hostkeys_by_key_or_type(struct hostkeys *hostkeys,
 			continue;
 		if (k == NULL) {
 			if (hostkeys->entries[i].key->type != keytype)
+				continue;
+			if (nid != -1 &&
+			    sshkey_type_plain(keytype) == KEY_ECDSA &&
+			    hostkeys->entries[i].key->ecdsa_nid != nid)
 				continue;
 			end_return = HOST_FOUND;
 			if (found != NULL)
@@ -398,15 +400,27 @@ check_key_in_hostkeys(struct hostkeys *hostkeys, struct sshkey *key,
 {
 	if (key == NULL)
 		fatal("no key to look up");
-	return check_hostkeys_by_key_or_type(hostkeys, key, 0, found);
+	return check_hostkeys_by_key_or_type(hostkeys, key, 0, -1, found);
 }
 
 int
-lookup_key_in_hostkeys_by_type(struct hostkeys *hostkeys, int keytype,
+lookup_key_in_hostkeys_by_type(struct hostkeys *hostkeys, int keytype, int nid,
     const struct hostkey_entry **found)
 {
-	return (check_hostkeys_by_key_or_type(hostkeys, NULL, keytype,
+	return (check_hostkeys_by_key_or_type(hostkeys, NULL, keytype, nid,
 	    found) == HOST_FOUND);
+}
+
+int
+lookup_marker_in_hostkeys(struct hostkeys *hostkeys, int want_marker)
+{
+	u_int i;
+
+	for (i = 0; i < hostkeys->num_entries; i++) {
+		if (hostkeys->entries[i].marker == (HostkeyMarker)want_marker)
+			return 1;
+	}
+	return 0;
 }
 
 static int
@@ -437,7 +451,48 @@ write_host_entry(FILE *f, const char *host, const char *ip,
 	else
 		error("%s: sshkey_write failed: %s", __func__, ssh_err(r));
 	fputc('\n', f);
+	/* If hashing is enabled, the IP address needs to go on its own line */
+	if (success && store_hash && ip != NULL)
+		success = write_host_entry(f, ip, NULL, key, 1);
 	return success;
+}
+
+/*
+ * Create user ~/.ssh directory if it doesn't exist and we want to write to it.
+ * If notify is set, a message will be emitted if the directory is created.
+ */
+void
+hostfile_create_user_ssh_dir(const char *filename, int notify)
+{
+	char *dotsshdir = NULL, *p;
+	size_t len;
+	struct stat st;
+
+	if ((p = strrchr(filename, '/')) == NULL)
+		return;
+	len = p - filename;
+	dotsshdir = tilde_expand_filename("~/" _PATH_SSH_USER_DIR, getuid());
+	if (strlen(dotsshdir) > len || strncmp(filename, dotsshdir, len) != 0)
+		goto out; /* not ~/.ssh prefixed */
+	if (stat(dotsshdir, &st) == 0)
+		goto out; /* dir already exists */
+	else if (errno != ENOENT)
+		error("Could not stat %s: %s", dotsshdir, strerror(errno));
+	else {
+#ifdef WITH_SELINUX
+		ssh_selinux_setfscreatecon(dotsshdir);
+#endif
+		if (mkdir(dotsshdir, 0700) == -1)
+			error("Could not create directory '%.200s' (%s).",
+			    dotsshdir, strerror(errno));
+		else if (notify)
+			logit("Created directory '%s'.", dotsshdir);
+#ifdef WITH_SELINUX
+		ssh_selinux_setfscreatecon(NULL);
+#endif
+	}
+ out:
+	free(dotsshdir);
 }
 
 /*
@@ -453,6 +508,7 @@ add_host_to_hostfile(const char *filename, const char *host,
 
 	if (key == NULL)
 		return 1;	/* XXX ? */
+	hostfile_create_user_ssh_dir(filename, 0);
 	f = fopen(filename, "a");
 	if (!f)
 		return 0;
@@ -464,8 +520,8 @@ add_host_to_hostfile(const char *filename, const char *host,
 struct host_delete_ctx {
 	FILE *out;
 	int quiet;
-	const char *host;
-	int *skip_keys; /* XXX split for host/ip? might want to ensure both */
+	const char *host, *ip;
+	u_int *match_keys;	/* mask of HKF_MATCH_* for this key */
 	struct sshkey * const *keys;
 	size_t nkeys;
 	int modified;
@@ -478,26 +534,21 @@ host_delete(struct hostkey_foreach_line *l, void *_ctx)
 	int loglevel = ctx->quiet ? SYSLOG_LEVEL_DEBUG1 : SYSLOG_LEVEL_VERBOSE;
 	size_t i;
 
-	if (l->status == HKF_STATUS_MATCHED) {
-		if (l->marker != MRK_NONE) {
-			/* Don't remove CA and revocation lines */
-			fprintf(ctx->out, "%s\n", l->line);
-			return 0;
-		}
-
+	/* Don't remove CA and revocation lines */
+	if (l->status == HKF_STATUS_MATCHED && l->marker == MRK_NONE) {
 		/*
 		 * If this line contains one of the keys that we will be
 		 * adding later, then don't change it and mark the key for
 		 * skipping.
 		 */
 		for (i = 0; i < ctx->nkeys; i++) {
-			if (sshkey_equal(ctx->keys[i], l->key)) {
-				ctx->skip_keys[i] = 1;
-				fprintf(ctx->out, "%s\n", l->line);
-				debug3("%s: %s key already at %s:%ld", __func__,
-				    sshkey_type(l->key), l->path, l->linenum);
-				return 0;
-			}
+			if (!sshkey_equal(ctx->keys[i], l->key))
+				continue;
+			ctx->match_keys[i] |= l->match;
+			fprintf(ctx->out, "%s\n", l->line);
+			debug3("%s: %s key already at %s:%ld", __func__,
+			    sshkey_type(l->key), l->path, l->linenum);
+			return 0;
 		}
 
 		/*
@@ -528,15 +579,19 @@ hostfile_replace_entries(const char *filename, const char *host, const char *ip,
 	int loglevel = quiet ? SYSLOG_LEVEL_DEBUG1 : SYSLOG_LEVEL_VERBOSE;
 	struct host_delete_ctx ctx;
 	char *fp, *temp = NULL, *back = NULL;
+	const char *what;
 	mode_t omask;
 	size_t i;
+	u_int want;
 
 	omask = umask(077);
 
 	memset(&ctx, 0, sizeof(ctx));
 	ctx.host = host;
+	ctx.ip = ip;
 	ctx.quiet = quiet;
-	if ((ctx.skip_keys = calloc(nkeys, sizeof(*ctx.skip_keys))) == NULL)
+
+	if ((ctx.match_keys = calloc(nkeys, sizeof(*ctx.match_keys))) == NULL)
 		return SSH_ERR_ALLOC_FAIL;
 	ctx.keys = keys;
 	ctx.nkeys = nkeys;
@@ -545,8 +600,8 @@ hostfile_replace_entries(const char *filename, const char *host, const char *ip,
 	/*
 	 * Prepare temporary file for in-place deletion.
 	 */
-	if ((r = asprintf(&temp, "%s.XXXXXXXXXXX", filename)) < 0 ||
-	    (r = asprintf(&back, "%s.old", filename)) < 0) {
+	if ((r = asprintf(&temp, "%s.XXXXXXXXXXX", filename)) == -1 ||
+	    (r = asprintf(&back, "%s.old", filename)) == -1) {
 		r = SSH_ERR_ALLOC_FAIL;
 		goto fail;
 	}
@@ -565,30 +620,53 @@ hostfile_replace_entries(const char *filename, const char *host, const char *ip,
 		goto fail;
 	}
 
-	/* Remove all entries for the specified host from the file */
+	/* Remove stale/mismatching entries for the specified host */
 	if ((r = hostkeys_foreach(filename, host_delete, &ctx, host, ip,
 	    HKF_WANT_PARSE_KEY)) != 0) {
+		oerrno = errno;
 		error("%s: hostkeys_foreach failed: %s", __func__, ssh_err(r));
 		goto fail;
 	}
 
-	/* Add the requested keys */
+	/* Re-add the requested keys */
+	want = HKF_MATCH_HOST | (ip == NULL ? 0 : HKF_MATCH_IP);
 	for (i = 0; i < nkeys; i++) {
-		if (ctx.skip_keys[i])
+		if ((want & ctx.match_keys[i]) == want)
 			continue;
 		if ((fp = sshkey_fingerprint(keys[i], hash_alg,
 		    SSH_FP_DEFAULT)) == NULL) {
 			r = SSH_ERR_ALLOC_FAIL;
 			goto fail;
 		}
-		do_log2(loglevel, "%s%sAdding new key for %s to %s: %s %s",
-		    quiet ? __func__ : "", quiet ? ": " : "", host, filename,
+		/* write host/ip */
+		what = "";
+		if (ctx.match_keys[i] == 0) {
+			what = "Adding new key";
+			if (!write_host_entry(ctx.out, host, ip,
+			    keys[i], store_hash)) {
+				r = SSH_ERR_INTERNAL_ERROR;
+				goto fail;
+			}
+		} else if ((want & ~ctx.match_keys[i]) == HKF_MATCH_HOST) {
+			what = "Fixing match (hostname)";
+			if (!write_host_entry(ctx.out, host, NULL,
+			    keys[i], store_hash)) {
+				r = SSH_ERR_INTERNAL_ERROR;
+				goto fail;
+			}
+		} else if ((want & ~ctx.match_keys[i]) == HKF_MATCH_IP) {
+			what = "Fixing match (address)";
+			if (!write_host_entry(ctx.out, ip, NULL,
+			    keys[i], store_hash)) {
+				r = SSH_ERR_INTERNAL_ERROR;
+				goto fail;
+			}
+		}
+		do_log2(loglevel, "%s%s%s for %s%s%s to %s: %s %s",
+		    quiet ? __func__ : "", quiet ? ": " : "", what,
+		    host, ip == NULL ? "" : ",", ip == NULL ? "" : ip, filename,
 		    sshkey_ssh_name(keys[i]), fp);
 		free(fp);
-		if (!write_host_entry(ctx.out, host, ip, keys[i], store_hash)) {
-			r = SSH_ERR_INTERNAL_ERROR;
-			goto fail;
-		}
 		ctx.modified = 1;
 	}
 	fclose(ctx.out);
@@ -633,7 +711,7 @@ hostfile_replace_entries(const char *filename, const char *host, const char *ip,
 	free(back);
 	if (ctx.out != NULL)
 		fclose(ctx.out);
-	free(ctx.skip_keys);
+	free(ctx.match_keys);
 	umask(omask);
 	if (r == SSH_ERR_SYSTEM_ERROR)
 		errno = oerrno;
