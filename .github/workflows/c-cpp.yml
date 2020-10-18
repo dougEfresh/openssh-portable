@@ -14,14 +14,7 @@ jobs:
     strategy:
       matrix:
         configs:
-        - ""
-        - "--with-kerberos5"
-        - "--with-libedit"
-        - "--with-pam"
-        - "--with-security-key-builtin"
-        - "--with-selinux"
-        - "--with-kerberos5 --with-libedit --with-pam --with-security-key-builtin --with-selinux"
-        - "--without-openssl --without-zlib"
+        - "--with-audit-passwd-url=yes"
 
     steps:
     - uses: actions/checkout@v2
@@ -33,7 +26,4 @@ jobs:
       run: ./configure ${{ matrix.configs }}
     - name: make
       run: make
-    - name: make tests
-      run: ./.github/run_test.sh ${{ matrix.configs }}
-      env:
-        TEST_SSH_UNSAFE_PERMISSIONS: 1
+
