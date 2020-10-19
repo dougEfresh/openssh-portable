@@ -76,6 +76,7 @@ typedef struct {
 	int port;
 #endif
 } audit_options;
+#endif
 
 /* PubkeyAuthOptions flags */
 #define PUBKEYAUTH_TOUCH_REQUIRED	(1)
