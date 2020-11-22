@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh-keygen.c,v 1.421 2020/10/18 11:32:02 djm Exp $ */
+/* $OpenBSD: ssh-keygen.c,v 1.424 2020/11/08 22:37:24 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1994 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -184,7 +184,7 @@ type_bits_valid(int type, const char *name, u_int32_t *bitsp)
 		fatal("unknown key type %s", key_type_name);
 	if (*bitsp == 0) {
 #ifdef WITH_OPENSSL
-		u_int nid;
+		int nid;
 
 		switch(type) {
 		case KEY_DSA:
@@ -219,10 +219,11 @@ type_bits_valid(int type, const char *name, u_int32_t *bitsp)
 		break;
 	case KEY_ECDSA:
 		if (sshkey_ecdsa_bits_to_nid(*bitsp) == -1)
-			fatal("Invalid ECDSA key length: valid lengths are "
 #ifdef OPENSSL_HAS_NISTP521
+			fatal("Invalid ECDSA key length: valid lengths are "
 			    "256, 384 or 521 bits");
 #else
+			fatal("Invalid ECDSA key length: valid lengths are "
 			    "256 or 384 bits");
 #endif
 	}
@@ -1853,7 +1854,7 @@ do_ca_sign(struct passwd *pw, const char *ca_key_path, int prefer_agent,
 			}
 			r = sshkey_certify(public, ca, key_type_name,
 			    sk_provider, pin);
-			notify_complete(notifier);
+			notify_complete(notifier, "User presence confirmed");
 			if (r != 0)
 				fatal_r(r, "Couldn't certify key %s", tmp);
 		}
@@ -3101,7 +3102,7 @@ usage(void)
 	    "       ssh-keygen -Y check-novalidate -n namespace -s signature_file\n"
 	    "       ssh-keygen -Y sign -f key_file -n namespace file ...\n"
 	    "       ssh-keygen -Y verify -f allowed_signers_file -I signer_identity\n"
-	    "       		-n namespace -s signature_file [-r revocation_file]\n");
+	    "                  -n namespace -s signature_file [-r revocation_file]\n");
 	exit(1);
 }
 

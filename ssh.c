@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh.c,v 1.540 2020/10/18 11:32:02 djm Exp $ */
+/* $OpenBSD: ssh.c,v 1.542 2020/11/12 22:38:57 dtucker Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -893,13 +893,7 @@ main(int ac, char **av)
 			break;
 		case 'V':
 			fprintf(stderr, "%s, %s\n",
-			    SSH_RELEASE,
-#ifdef WITH_OPENSSL
-			    OpenSSL_version(OPENSSL_VERSION)
-#else
-			    "without OpenSSL"
-#endif
-			);
+			    SSH_RELEASE, SSH_OPENSSL_VERSION);
 			if (opt == 'V')
 				exit(0);
 			break;
@@ -1160,13 +1154,7 @@ main(int ac, char **av)
 	    !use_syslog);
 
 	if (debug_flag)
-		logit("%s, %s", SSH_RELEASE,
-#ifdef WITH_OPENSSL
-		    OpenSSL_version(OPENSSL_VERSION)
-#else
-		    "without OpenSSL"
-#endif
-		);
+		logit("%s, %s", SSH_RELEASE, SSH_OPENSSL_VERSION);
 
 	/* Parse the configuration files */
 	process_config_files(host_arg, pw, 0, &want_final_pass);
@@ -1535,7 +1523,10 @@ main(int ac, char **av)
 			cleanup_exit(255); /* resolve_host logs the error */
 	}
 
-	timeout_ms = options.connection_timeout * 1000;
+	if (options.connection_timeout >= INT_MAX/1000)
+		timeout_ms = INT_MAX;
+	else
+		timeout_ms = options.connection_timeout * 1000;
 
 	/* Open a connection to the remote host. */
 	if (ssh_connect(ssh, host, host_arg, addrs, &hostaddr, options.port,
