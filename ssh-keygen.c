@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh-keygen.c,v 1.424 2020/11/08 22:37:24 djm Exp $ */
+/* $OpenBSD: ssh-keygen.c,v 1.426 2020/11/28 12:52:32 dtucker Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1994 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -65,6 +65,7 @@
 #include "sshsig.h"
 #include "ssh-sk.h"
 #include "sk-api.h" /* XXX for SSH_SK_USER_PRESENCE_REQD; remove */
+#include "cipher.h"
 
 #ifdef WITH_OPENSSL
 # define DEFAULT_KEY_TYPE_NAME "rsa"
@@ -3067,9 +3068,9 @@ usage(void)
 	    "usage: ssh-keygen [-q] [-a rounds] [-b bits] [-C comment] [-f output_keyfile]\n"
 	    "                  [-m format] [-N new_passphrase] [-O option]\n"
 	    "                  [-t dsa | ecdsa | ecdsa-sk | ed25519 | ed25519-sk | rsa]\n"
-	    "                  [-w provider]\n"
+	    "                  [-w provider] [-Z cipher]\n"
 	    "       ssh-keygen -p [-a rounds] [-f keyfile] [-m format] [-N new_passphrase]\n"
-	    "                   [-P old_passphrase]\n"
+	    "                   [-P old_passphrase] [-Z cipher]\n"
 	    "       ssh-keygen -i [-f input_keyfile] [-m key_format]\n"
 	    "       ssh-keygen -e [-f input_keyfile] [-m key_format]\n"
 	    "       ssh-keygen -y [-f input_keyfile]\n"
@@ -3258,6 +3259,9 @@ main(int argc, char **argv)
 			break;
 		case 'Z':
 			openssh_format_cipher = optarg;
+			if (cipher_by_name(openssh_format_cipher) == NULL)
+				fatal("Invalid OpenSSH-format cipher '%s'",
+				    openssh_format_cipher);
 			break;
 		case 'C':
 			identity_comment = optarg;

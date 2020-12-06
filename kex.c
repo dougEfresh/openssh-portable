@@ -1,4 +1,4 @@
-/* $OpenBSD: kex.c,v 1.160 2020/10/18 11:32:01 djm Exp $ */
+/* $OpenBSD: kex.c,v 1.162 2020/12/04 02:27:57 djm Exp $ */
 /*
  * Copyright (c) 2000, 2001 Markus Friedl.  All rights reserved.
  *
@@ -535,7 +535,7 @@ kex_send_kexinit(struct ssh *ssh)
 	int r;
 
 	if (kex == NULL) {
-		error_f("no hex");
+		error_f("no kex");
 		return SSH_ERR_INTERNAL_ERROR;
 	}
 	if (kex->flags & KEX_INIT_SENT)
@@ -577,7 +577,7 @@ kex_input_kexinit(int type, u_int32_t seq, struct ssh *ssh)
 
 	debug("SSH2_MSG_KEXINIT received");
 	if (kex == NULL) {
-		error_f("no hex");
+		error_f("no kex");
 		return SSH_ERR_INTERNAL_ERROR;
 	}
 	ssh_dispatch_set(ssh, SSH2_MSG_KEXINIT, NULL);
@@ -837,6 +837,7 @@ choose_kex(struct kex *k, char *client, char *server)
 static int
 choose_hostkeyalg(struct kex *k, char *client, char *server)
 {
+	free(k->hostkey_alg);
 	k->hostkey_alg = match_list(client, server, NULL);
 
 	debug("kex: host key algorithm: %s",
